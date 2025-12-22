@@ -9,6 +9,7 @@ import swagger from "@fastify/swagger";
 import swaggerUI from "@fastify/swagger-ui";
 import ajvErrors from "ajv-errors";
 import formbody from '@fastify/formbody';
+import sanitizePlugin from "./plugins/sanitize.js";
 
 dotenv.config();
 
@@ -51,6 +52,7 @@ async function start() {
     });
 
     await fastify.register(authPlugin);
+    await fastify.register(sanitizePlugin);
     await fastify.register(masterRoutes, { prefix: "/api" });
 
     // await errorHandler(fastify);

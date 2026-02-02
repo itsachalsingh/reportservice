@@ -86,7 +86,16 @@ async function createReportHandler(req, reply) {
     const totals = buildTotals(rows);
     const rowsWithTotal = rows.length ? [...rows, totals] : [totals];
 
-    const format = String(req.query?.format || "image").toLowerCase();
+    const rawFormat = req.query?.format;
+    const acceptHeader = String(req.headers?.accept || "").toLowerCase();
+    const inferredFormat =
+      rawFormat ||
+      (acceptHeader
+        ? acceptHeader.includes("application/json")
+          ? "json"
+          : "image"
+        : "json");
+    const format = String(inferredFormat).toLowerCase();
     if (format === "json") {
       return reply.send({ ok: true, rows: rowsWithTotal });
     }
@@ -131,4 +140,3 @@ async function routes(fastify, opts) {
 }
 
 export default fp(routes);
-

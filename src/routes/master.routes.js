@@ -1,4 +1,5 @@
 import Transaction from "../routes/payment.route.js"
+import ConsumerConnectionCategoryReport from "../routes/consumerConnectionCategory.route.js"
 
 async function masterRoutes(fastify, opts) {
 
@@ -19,6 +20,7 @@ async function masterRoutes(fastify, opts) {
   };
 
   await fastify.register(Transaction, { authRoute });
+  await fastify.register(ConsumerConnectionCategoryReport, { authRoute });
 }
 
 export default masterRoutes;

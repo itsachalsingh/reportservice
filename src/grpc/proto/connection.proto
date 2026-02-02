@@ -1,0 +1,158 @@
+syntax = "proto3";
+
+package connection;
+
+message Connection {
+  string id                            = 1;
+  string connection_no                 = 2;
+  string consumer_id                   = 3;
+  string application_id                = 4;
+  string meter_id                      = 5;
+  string district_id                   = 6;
+  string tehsil_id                     = 7;
+  string area_id                       = 8;
+  string department_id                 = 9;
+  string division_id                   = 10;
+  string first_name                    = 11;
+  string last_name                     = 12;
+  string connection_for                = 13;
+  string connection_category           = 14;
+  string billing_type                  = 15;
+  string meter_size                    = 16;
+  string annual_assessment_of_building = 17;
+  string no_of_taps                    = 18;
+  string average_reading               = 19;
+  string scheme_id                     = 20;
+  string email                         = 21;
+  string phone_no                      = 22;
+  string meter_no                      = 23;
+  string district_name                 = 24;
+  string tehsil_name                   = 25;
+  string area_name                     = 26;
+  string department_name               = 27;
+  string division_name                 = 28;
+  string scheme_name                   = 29;
+  string connection_address            = 30;
+  string connection_assessment_id      = 31;
+  string no_of_seats                   = 32;
+  string currReading                   = 33;
+  string connection_assessment_name    = 34;
+  string head_id                       = 35;
+  string head_name                     = 36;
+  string prevReading                   = 37;
+  string village_id                    = 38;
+  string village_name                  = 39;
+  string ward_id                       = 40;
+  string ward_name                     = 41;
+  string collection_id                 = 42;
+  string collection_name               = 43;
+  string connection_category_name      = 44;
+  string nondomestic_connection_category_name      = 45; 
+  string meter_size_name                = 46;
+  string is_sewer_included              = 47; 
+  string monthly_sewer_assessment_of_building              = 48; 
+  string old_consumer_code              = 49; 
+  string lane_number              = 50; 
+  string collection_center_id              = 51; 
+  string tarif_type              = 52; 
+  string tarif_type_name              = 53;
+  string pipe_size_mm                 = 54;
+  string consumer_code                 = 55;
+  string consumer_category            = 56;
+  string father_name                  = 57;
+}
+
+message GetConnectionByIdRequest {
+  string id = 1;
+}
+
+message GetConnectionByConsumerCodeRequest {
+  string consumer_code = 1;
+}
+
+message GetConnectionByIdsRequest {
+  repeated string ids = 1;
+}
+
+
+message GetConnectionByLocationConnectionTypeAreaTypeRequest {
+  repeated string ids = 1;
+}
+
+message GetConnectionByIdResponse {
+  Connection connection = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetConnectionsByIdsResponse {
+  repeated Connection connections = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+
+message GetConnectionsByLocationAreaAndTypeRequest {
+  // Required filters
+  string location_id     = 1;
+  string connection_type  = 2;
+  string billing_type     = 3;
+  string area_type = 4;
+
+  // Optional pagination
+  uint32 page_size  = 10;
+  string page_token = 11;
+}
+
+message GetConnectionsByLocationAreaAndTypeResponse {
+  repeated Connection connections = 1;
+  bool success = 2;
+  string message = 3;
+  string next_page_token = 4;
+}
+
+message ConnectionCategorySummaryRequest {
+  string department_id = 1;
+  string division_id = 2;
+  string collection_center_id = 3;
+  string location = 4; // rural | urban | all
+}
+
+message ConnectionCategorySummaryRow {
+  string connection_category = 1;
+  uint32 tax_non = 2;
+  uint32 total_cd = 3;
+  uint32 water_c = 4;
+  uint32 sewer_c = 5;
+  uint32 both_c = 6;
+  uint32 water_d = 7;
+  uint32 sewer_d = 8;
+  uint32 both_d = 9;
+}
+
+message ConnectionCategorySummaryResponse {
+  repeated ConnectionCategorySummaryRow rows = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message CreateConnectionRequest {
+  Connection connection = 1;
+}
+
+message CreateConnectionResponse {
+  Connection connection = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+service ConnectionService {
+  rpc GetConnectionById   (GetConnectionByIdRequest)   returns (GetConnectionByIdResponse);
+  rpc GetConnectionByConsumerCode (GetConnectionByConsumerCodeRequest) returns (GetConnectionByIdResponse);
+  rpc GetConnectionsByIds (GetConnectionByIdsRequest)  returns (GetConnectionsByIdsResponse);
+  rpc GetConnectionsByLocationAreaAndType (GetConnectionsByLocationAreaAndTypeRequest)
+      returns (GetConnectionsByLocationAreaAndTypeResponse);
+  rpc GetConnectionCategorySummary (ConnectionCategorySummaryRequest)
+      returns (ConnectionCategorySummaryResponse);
+  rpc CreateConnection (CreateConnectionRequest) returns (CreateConnectionResponse);
+}

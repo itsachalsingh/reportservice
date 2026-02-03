@@ -136,6 +136,24 @@ message ConnectionCategorySummaryResponse {
   string message = 3;
 }
 
+message ConnectionCountSummaryRequest {
+  string department_id = 1;
+  string division_id = 2;
+  string collection_center_id = 3;
+  string scheme_id = 4;
+}
+
+message ConnectionCountSummaryRow {
+  string category = 1;
+  uint32 count = 2;
+}
+
+message ConnectionCountSummaryResponse {
+  repeated ConnectionCountSummaryRow rows = 1;
+  bool success = 2;
+  string message = 3;
+}
+
 message CreateConnectionRequest {
   Connection connection = 1;
 }
@@ -154,5 +172,7 @@ service ConnectionService {
       returns (GetConnectionsByLocationAreaAndTypeResponse);
   rpc GetConnectionCategorySummary (ConnectionCategorySummaryRequest)
       returns (ConnectionCategorySummaryResponse);
+  rpc GetConnectionCountSummary (ConnectionCountSummaryRequest)
+      returns (ConnectionCountSummaryResponse);
   rpc CreateConnection (CreateConnectionRequest) returns (CreateConnectionResponse);
 }

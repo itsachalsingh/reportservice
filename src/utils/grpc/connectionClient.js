@@ -58,3 +58,18 @@ export function getConnectionCategorySummary(payload = {}) {
   });
 }
 
+export function getConnectionCountSummary(payload = {}) {
+  const client = getClient();
+  return new Promise((resolve, reject) => {
+    client.getConnectionCountSummary(payload, (error, response) => {
+      if (error) {
+        const err = new Error(
+          error?.message || "Failed to fetch connection count summary"
+        );
+        err.code = error.code;
+        return reject(err);
+      }
+      resolve(response || {});
+    });
+  });
+}

@@ -63,7 +63,7 @@ async function createReportHandler(req, reply) {
       return reply.send({ ok: true, rows });
     }
 
-    const title = "CONNECTION COUNT (CONSUMER CATEGORY BASED)";
+    const title = "CONSUMER CATEGORY WISE CONNECTION REPORT";
     const svg = renderConnectionCountReportSvg({
       title,
       rows,
@@ -72,10 +72,10 @@ async function createReportHandler(req, reply) {
     reply.header("Content-Type", "image/svg+xml");
     return reply.send(svg);
   } catch (err) {
-    req.log.error({ err }, "connection-count-report failed");
+    req.log.error({ err }, "consumer-connection-count-report failed");
     return reply.code(500).send({
       ok: false,
-      message: "Failed to fetch connection count report",
+      message: "Failed to fetch consumer connection count report",
       error: err?.message || String(err),
     });
   }

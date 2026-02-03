@@ -144,8 +144,14 @@ message ConnectionCountSummaryRequest {
 }
 
 message ConnectionCountSummaryRow {
-  string category = 1;
-  uint32 count = 2;
+  string consumer_category = 1;
+  uint32 water = 2;
+  uint32 sewer = 3;
+  uint32 both = 4;
+  uint32 domestic = 5;
+  uint32 non_domestic = 6;
+  uint32 active = 7;
+  uint32 inactive = 8;
 }
 
 message ConnectionCountSummaryResponse {

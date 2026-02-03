@@ -118,8 +118,17 @@ export function renderConnectionCountReportSvg({
   subtitle = "",
   rows = [],
 } = {}) {
-  const header = ["Consumer Category", "Connection Count"];
-  const colWidths = [320, 160];
+  const header = [
+    "Consumer Category",
+    "Water",
+    "Sewer",
+    "Water + Sewer",
+    "Domestic",
+    "Non Domestic",
+    "Active",
+    "Inactive",
+  ];
+  const colWidths = [220, 80, 80, 110, 90, 120, 80, 80];
   const totalWidth = colWidths.reduce((sum, w) => sum + w, 0);
   const paddingX = 24;
   const titleHeight = 28;
@@ -143,11 +152,20 @@ export function renderConnectionCountReportSvg({
   const rowCells = rows
     .map((row) => {
       let cx = paddingX;
-      const values = [row.category, row.count];
+      const values = [
+        row.consumer_category,
+        row.water,
+        row.sewer,
+        row.both,
+        row.domestic,
+        row.non_domestic,
+        row.active,
+        row.inactive,
+      ];
 
       const rowText = values
         .map((value, index) => {
-          const text = truncateText(value, index === 0 ? 36 : 12);
+          const text = truncateText(value, index === 0 ? 28 : 12);
           const cell = `<text x="${cx + 8}" y="${y + 19}" font-size="12" fill="#111827">${escapeXml(text)}</text>`;
           cx += colWidths[index];
           return cell;

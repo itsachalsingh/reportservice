@@ -12,6 +12,8 @@ const reportBody = {
     division_id: { type: "string" },
     collection_center: { type: "string" },
     collection_center_id: { type: "string" },
+    scheme: { type: "string" },
+    scheme_id: { type: "string" },
     location: { type: "string" },
   },
   required: ["location"],
@@ -65,12 +67,13 @@ async function createReportHandler(req, reply) {
     "collection_center_id",
     "collection_center"
   );
+  const scheme_id = coalesceId(req.body, "scheme_id", "scheme");
 
-  if (!department_id || !division_id || !collection_center_id) {
+  if (!department_id || !division_id) {
     return reply.code(400).send({
       ok: false,
       message:
-        "department, division, and collection_center are required (use *_id or name)",
+        "department and division are required (use *_id or name)",
     });
   }
 
@@ -79,12 +82,20 @@ async function createReportHandler(req, reply) {
       department_id,
       division_id,
       collection_center_id,
+      scheme_id,
       location,
     });
 
     const rows = Array.isArray(data?.rows) ? data.rows : [];
-    const totals = buildTotals(rows);
-    const rowsWithTotal = rows.length ? [...rows, totals] : [totals];
+    const hasOverallTotal = rows.some(
+      (row) => String(row?.connection_category || "").trim().toLowerCase() === "total"
+    );
+    const totals = hasOverallTotal ? null : buildTotals(rows);
+    const rowsWithTotal = hasOverallTotal
+      ? rows
+      : rows.length
+        ? [...rows, totals]
+        : [totals];
 
     const rawFormat = req.query?.format;
     const acceptHeader = String(req.headers?.accept || "").toLowerCase();

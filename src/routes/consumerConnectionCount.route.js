@@ -31,11 +31,11 @@ async function createReportHandler(req, reply) {
   );
   const scheme_id = coalesceId(req.body, "scheme_id", "scheme");
 
-  if (!department_id || !division_id || !collection_center_id) {
+  if (!department_id || !division_id) {
     return reply.code(400).send({
       ok: false,
       message:
-        "department, division, and collection_center are required (use *_id or name)",
+        "department and division are required (use *_id or name)",
     });
   }
 

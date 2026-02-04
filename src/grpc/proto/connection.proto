@@ -116,6 +116,7 @@ message ConnectionCategorySummaryRequest {
   string division_id = 2;
   string collection_center_id = 3;
   string location = 4; // rural | urban | all
+  string scheme_id = 5;
 }
 
 message ConnectionCategorySummaryRow {

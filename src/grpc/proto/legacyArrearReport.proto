@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package legacyarrear;
+
+service LegacyArrearReportService {
+  rpc GetLegacyArrearDivisionSummary (LegacyArrearSummaryRequest) returns (LegacyArrearSummaryResponse);
+}
+
+message LegacyArrearSummaryRequest {
+  string department = 1;
+  string department_id = 2;
+  string departmentId = 3;
+  string division = 4;
+  string division_id = 5;
+  string divisionId = 6;
+  string collection_center = 7;
+  string collection_center_id = 8;
+  string collectionCenter = 9;
+  string collectionCenterId = 10;
+  string scheme = 11;
+  string scheme_id = 12;
+  string schemeId = 13;
+  bool group_by_collection_center = 14;
+  bool groupByCollectionCenter = 15;
+  bool group_by_scheme = 16;
+  bool groupByScheme = 17;
+}
+
+message LegacyArrearFilters {
+  string department_id = 1;
+  string division_id = 2;
+  string division = 3;
+  string collection_center_id = 4;
+  string collection_center = 5;
+  string scheme_id = 6;
+  string scheme = 7;
+  bool is_legacy = 8;
+}
+
+message LegacyArrearGrouping {
+  bool by_division = 1;
+  bool by_collection_center = 2;
+  bool by_scheme = 3;
+}
+
+message LegacyArrearRow {
+  string division_id = 1;
+  string division = 2;
+  string collection_center_id = 3;
+  string collection_center = 4;
+  string scheme_id = 5;
+  string scheme = 6;
+  double water_arrear = 7;
+  double sewer_arrear = 8;
+  double meter_rent_arrear = 9;
+  double other_arrear = 10;
+  double total_arrear = 11;
+}
+
+message LegacyArrearTotals {
+  double water_arrear = 1;
+  double sewer_arrear = 2;
+  double meter_rent_arrear = 3;
+  double other_arrear = 4;
+  double total_arrear = 5;
+}
+
+message LegacyArrearSummaryResponse {
+  bool success = 1;
+  string message = 2;
+  int32 count = 3;
+  LegacyArrearFilters filters = 4;
+  LegacyArrearGrouping grouping = 5;
+  repeated LegacyArrearRow rows = 6;
+  LegacyArrearTotals totals = 7;
+}
+

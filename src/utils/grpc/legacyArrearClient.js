@@ -26,20 +26,58 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const proto = grpc.loadPackageDefinition(packageDefinition).legacyarrear;
 
 let clientInstance = null;
+let activeTarget = "";
 
-function getClient() {
-  if (clientInstance) return clientInstance;
+function getCandidateTargets() {
+  const explicitTarget = String(process.env.BILLING_REPORT_GRPC_TARGET || "").trim();
+  if (explicitTarget) return [explicitTarget];
 
-  const host = process.env.BILLING_REPORT_GRPC_HOST || "uwbs-billingservice";
   const port = Number(process.env.BILLING_REPORT_GRPC_PORT || 50057);
-  const target = `${host}:${port}`;
+  const hostsRaw = String(
+    process.env.BILLING_REPORT_GRPC_HOSTS || process.env.BILLING_REPORT_GRPC_HOST || ""
+  )
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
-  clientInstance = new proto.LegacyArrearReportService(
+  const defaults = ["uwbs-billingservice", "host.docker.internal", "localhost", "127.0.0.1"];
+  const seen = new Set();
+  const hosts = [...hostsRaw, ...defaults].filter((host) => {
+    if (seen.has(host)) return false;
+    seen.add(host);
+    return true;
+  });
+
+  return hosts.map((host) => `${host}:${port}`);
+}
+
+function createClient(target) {
+  return new proto.LegacyArrearReportService(
     target,
     grpc.credentials.createInsecure(),
     { "grpc.max_receive_message_length": -1 }
   );
+}
 
+function isGrpcUnavailable(error) {
+  const code = Number(error?.code);
+  return code === grpc.status.UNAVAILABLE || code === grpc.status.DEADLINE_EXCEEDED;
+}
+
+async function invokeSummary(client, payload) {
+  return new Promise((resolve, reject) => {
+    client.GetLegacyArrearDivisionSummary(payload, (error, response) => {
+      if (error) return reject(error);
+      resolve(response || {});
+    });
+  });
+}
+
+function getClient() {
+  if (clientInstance) return clientInstance;
+  const candidates = getCandidateTargets();
+  activeTarget = candidates[0] || "localhost:50057";
+  clientInstance = createClient(activeTarget);
   return clientInstance;
 }
 
@@ -73,13 +111,32 @@ export async function fetchLegacyArrearDivisionSummary(input = {}) {
     groupByScheme: Boolean(input.groupByScheme),
   };
 
-  const client = getClient();
+  const candidates = getCandidateTargets();
+  let lastError = null;
 
-  return new Promise((resolve, reject) => {
-    client.GetLegacyArrearDivisionSummary(payload, (error, response) => {
-      if (error) return reject(error);
-      resolve(response || {});
-    });
-  });
+  if (clientInstance && activeTarget) {
+    try {
+      return await invokeSummary(clientInstance, payload);
+    } catch (error) {
+      lastError = error;
+      if (!isGrpcUnavailable(error)) throw error;
+      clientInstance = null;
+      activeTarget = "";
+    }
+  }
+
+  for (const target of candidates) {
+    const client = createClient(target);
+    try {
+      const response = await invokeSummary(client, payload);
+      clientInstance = client;
+      activeTarget = target;
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (!isGrpcUnavailable(error)) throw error;
+    }
+  }
+
+  throw lastError || new Error("Unable to connect to legacy arrear gRPC service");
 }
-

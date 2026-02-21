@@ -155,6 +155,7 @@ export async function getDailyIncomeReportRPC(input) {
     end_date: input?.end_date,
     collection_center: input?.collection_center || input?.collection_center_id || null,
     division: input?.division || input?.division_id || null,
+    scheme: input?.scheme || input?.scheme_id || null,
     department: input?.department || input?.department_id || null,
     payment_methods: input?.payment_methods || input?.payment_method || null,
     types: input?.types || input?.type || null,

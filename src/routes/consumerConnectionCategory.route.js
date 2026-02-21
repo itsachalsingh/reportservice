@@ -20,9 +20,28 @@ const reportBody = {
 };
 
 const normalizeLocation = (value) => String(value || "").trim().toLowerCase();
+const normalizeCategoryKey = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 
 const coalesceId = (body, primary, fallback) =>
   body?.[primary] || body?.[fallback] || "";
+
+const EXCLUDED_CONNECTION_CATEGORIES = new Set([
+  "total water sewer",
+  "total water",
+  "total sewer",
+  "both",
+  "meter",
+  "average",
+  "tap",
+  "assessment",
+  "total active connection",
+  "total inactive connect",
+  "total inactive connection",
+]);
 
 function buildTotals(rows) {
   return rows.reduce(
@@ -86,7 +105,12 @@ async function createReportHandler(req, reply) {
       location,
     });
 
-    const rows = Array.isArray(data?.rows) ? data.rows : [];
+    const rows = (Array.isArray(data?.rows) ? data.rows : []).filter(
+      (row) =>
+        !EXCLUDED_CONNECTION_CATEGORIES.has(
+          normalizeCategoryKey(row?.connection_category)
+        )
+    );
     const hasOverallTotal = rows.some(
       (row) => String(row?.connection_category || "").trim().toLowerCase() === "total"
     );

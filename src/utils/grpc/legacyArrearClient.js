@@ -45,6 +45,10 @@ function getServerAddress() {
   return `${DEFAULT_HOST}:${DEFAULT_PORT}`;
 }
 
+export function getLegacyArrearGrpcTarget() {
+  return getServerAddress();
+}
+
 function createClient(target) {
   return new proto.LegacyArrearReportService(
     target,
@@ -56,6 +60,22 @@ function createClient(target) {
 function isGrpcUnavailable(error) {
   const code = Number(error?.code);
   return code === grpc.status.UNAVAILABLE || code === grpc.status.DEADLINE_EXCEEDED;
+}
+
+function toDebugError(error, meta = {}) {
+  const err =
+    error instanceof Error
+      ? error
+      : new Error(error?.message || "Legacy arrear gRPC call failed");
+  err.grpcDebug = {
+    target: getServerAddress(),
+    host: DEFAULT_HOST,
+    port: DEFAULT_PORT,
+    grpcCode: error?.code ?? null,
+    grpcDetails: error?.details ?? null,
+    ...meta,
+  };
+  return err;
 }
 
 async function invokeSummary(client, payload) {
@@ -106,9 +126,15 @@ export async function fetchLegacyArrearDivisionSummary(input = {}) {
   try {
     return await invokeSummary(getClient(), payload);
   } catch (error) {
-    if (!isGrpcUnavailable(error)) throw error;
+    if (!isGrpcUnavailable(error)) {
+      throw toDebugError(error, { phase: "initial_call" });
+    }
     // Recreate client once on transient channel failures.
     clientInstance = null;
-    return invokeSummary(getClient(), payload);
+    try {
+      return await invokeSummary(getClient(), payload);
+    } catch (retryError) {
+      throw toDebugError(retryError, { phase: "retry_call" });
+    }
   }
 }

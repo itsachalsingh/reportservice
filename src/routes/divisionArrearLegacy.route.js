@@ -1,5 +1,8 @@
 import fp from "fastify-plugin";
-import { fetchLegacyArrearDivisionSummary } from "../utils/grpc/legacyArrearClient.js";
+import {
+  fetchLegacyArrearDivisionSummary,
+  getLegacyArrearGrpcTarget,
+} from "../utils/grpc/legacyArrearClient.js";
 import { createLegacyArrearSummaryPdf } from "../utils/legacyArrearPdf.js";
 
 const reportBody = {
@@ -65,7 +68,15 @@ async function createDivisionLegacyArrearReport(req, reply) {
   } catch (err) {
     const statusCode = 500;
     const remoteMessage = err?.message || "Failed to fetch report";
-    req.log.error({ err }, "division-legacy-arrear-report failed");
+    const debug = err?.grpcDebug || null;
+    const logPayload = {
+      err,
+      grpcTarget: getLegacyArrearGrpcTarget(),
+      grpcDebug: debug,
+      requestBody: req.body || {},
+    };
+    req.log.error(logPayload, "division-legacy-arrear-report failed");
+    console.error("[division-legacy-arrear-report] failed", logPayload);
     return reply.code(statusCode).send({
       ok: false,
       message: remoteMessage,

@@ -55,6 +55,8 @@ message LegacyArrearRow {
   double meter_rent_arrear = 9;
   double other_arrear = 10;
   double total_arrear = 11;
+  double late_fine = 12;
+  double advance = 13;
 }
 
 message LegacyArrearTotals {
@@ -63,6 +65,8 @@ message LegacyArrearTotals {
   double meter_rent_arrear = 3;
   double other_arrear = 4;
   double total_arrear = 5;
+  double late_fine = 6;
+  double advance = 7;
 }
 
 message LegacyArrearSummaryResponse {
@@ -74,4 +78,3 @@ message LegacyArrearSummaryResponse {
   repeated LegacyArrearRow rows = 6;
   LegacyArrearTotals totals = 7;
 }
-

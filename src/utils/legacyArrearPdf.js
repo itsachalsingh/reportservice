@@ -116,6 +116,8 @@ export async function createLegacyArrearSummaryPdf({
     { key: "sewer_arrear", width: 95, align: "right" },
     { key: "meter_rent_arrear", width: 110, align: "right" },
     { key: "other_arrear", width: 95, align: "right" },
+    { key: "late_fine", width: 90, align: "right" },
+    { key: "advance", width: 90, align: "right" },
     { key: "total_arrear", width: 100, align: "right" }
   );
 
@@ -131,6 +133,8 @@ export async function createLegacyArrearSummaryPdf({
     sewer_arrear: "Sewer Arrear",
     meter_rent_arrear: "Meter Rent Arrear",
     other_arrear: "Other Arrear",
+    late_fine: "Late Fine",
+    advance: "Advance",
     total_arrear: "Total Arrear",
   };
 
@@ -155,6 +159,8 @@ export async function createLegacyArrearSummaryPdf({
         sewer_arrear: formatMoney(row.sewer_arrear),
         meter_rent_arrear: formatMoney(row.meter_rent_arrear),
         other_arrear: formatMoney(row.other_arrear),
+        late_fine: formatMoney(row.late_fine),
+        advance: formatMoney(row.advance),
         total_arrear: formatMoney(row.total_arrear),
       },
       y
@@ -179,6 +185,8 @@ export async function createLegacyArrearSummaryPdf({
       sewer_arrear: formatMoney(totals.sewer_arrear),
       meter_rent_arrear: formatMoney(totals.meter_rent_arrear),
       other_arrear: formatMoney(totals.other_arrear),
+      late_fine: formatMoney(totals.late_fine),
+      advance: formatMoney(totals.advance),
       total_arrear: formatMoney(totals.total_arrear),
     },
     y,
@@ -188,4 +196,3 @@ export async function createLegacyArrearSummaryPdf({
   doc.end();
   return done;
 }
-

@@ -26,29 +26,23 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 const proto = grpc.loadPackageDefinition(packageDefinition).legacyarrear;
 
 let clientInstance = null;
-let activeTarget = "";
+const DEFAULT_HOST =
+  process.env.BILLING_SERVICE_GRPC_HOST ||
+  process.env.BILLING_REPORT_GRPC_HOST ||
+  "billing-service";
+const DEFAULT_PORT =
+  process.env.BILLING_SERVICE_GRPC_PORT ||
+  process.env.BILLING_REPORT_GRPC_PORT ||
+  "50057";
 
-function getCandidateTargets() {
-  const explicitTarget = String(process.env.BILLING_REPORT_GRPC_TARGET || "").trim();
-  if (explicitTarget) return [explicitTarget];
-
-  const port = Number(process.env.BILLING_REPORT_GRPC_PORT || 50057);
-  const hostsRaw = String(
-    process.env.BILLING_REPORT_GRPC_HOSTS || process.env.BILLING_REPORT_GRPC_HOST || ""
-  )
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const defaults = ["uwbs-billingservice", "host.docker.internal", "localhost", "127.0.0.1"];
-  const seen = new Set();
-  const hosts = [...hostsRaw, ...defaults].filter((host) => {
-    if (seen.has(host)) return false;
-    seen.add(host);
-    return true;
-  });
-
-  return hosts.map((host) => `${host}:${port}`);
+function getServerAddress() {
+  const explicitTarget = String(
+    process.env.BILLING_SERVICE_GRPC_TARGET ||
+      process.env.BILLING_REPORT_GRPC_TARGET ||
+      ""
+  ).trim();
+  if (explicitTarget) return explicitTarget;
+  return `${DEFAULT_HOST}:${DEFAULT_PORT}`;
 }
 
 function createClient(target) {
@@ -75,9 +69,7 @@ async function invokeSummary(client, payload) {
 
 function getClient() {
   if (clientInstance) return clientInstance;
-  const candidates = getCandidateTargets();
-  activeTarget = candidates[0] || "localhost:50057";
-  clientInstance = createClient(activeTarget);
+  clientInstance = createClient(getServerAddress());
   return clientInstance;
 }
 
@@ -111,32 +103,12 @@ export async function fetchLegacyArrearDivisionSummary(input = {}) {
     groupByScheme: Boolean(input.groupByScheme),
   };
 
-  const candidates = getCandidateTargets();
-  let lastError = null;
-
-  if (clientInstance && activeTarget) {
-    try {
-      return await invokeSummary(clientInstance, payload);
-    } catch (error) {
-      lastError = error;
-      if (!isGrpcUnavailable(error)) throw error;
-      clientInstance = null;
-      activeTarget = "";
-    }
+  try {
+    return await invokeSummary(getClient(), payload);
+  } catch (error) {
+    if (!isGrpcUnavailable(error)) throw error;
+    // Recreate client once on transient channel failures.
+    clientInstance = null;
+    return invokeSummary(getClient(), payload);
   }
-
-  for (const target of candidates) {
-    const client = createClient(target);
-    try {
-      const response = await invokeSummary(client, payload);
-      clientInstance = client;
-      activeTarget = target;
-      return response;
-    } catch (error) {
-      lastError = error;
-      if (!isGrpcUnavailable(error)) throw error;
-    }
-  }
-
-  throw lastError || new Error("Unable to connect to legacy arrear gRPC service");
 }

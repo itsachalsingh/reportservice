@@ -19,6 +19,9 @@ const dailyIncomeBody = {
     scheme_id: { type: "string" },
     department: { type: "string" },
     department_id: { type: "string" },
+    revenue_unit_id: { type: "string" },
+    ledger_id: { type: "string" },
+    lane_id: { type: "string" },
     area_type: { type: "string", enum: ["urban", "rural", "all"] },
     payment_methods: {
       oneOf: [
@@ -51,6 +54,9 @@ async function createDailyIncomeHandler(req, reply) {
     division: req.body?.division || req.body?.division_id,
     scheme: req.body?.scheme || req.body?.scheme_id,
     department: req.body?.department || req.body?.department_id,
+    revenue_unit_id: req.body?.revenue_unit_id,
+    ledger_id: req.body?.ledger_id,
+    lane_id: req.body?.lane_id,
     payment_methods: req.body?.payment_methods || req.body?.payment_method,
     types: req.body?.types || req.body?.type,
     area_type: req.body?.area_type,

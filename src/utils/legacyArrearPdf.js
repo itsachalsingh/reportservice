@@ -62,6 +62,19 @@ function drawRow(doc, columns, row, y, { header = false } = {}) {
   return y + rowHeight;
 }
 
+function fitColumnsToPage(doc, columns) {
+  const availableWidth =
+    doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const currentWidth = columns.reduce((sum, col) => sum + Number(col.width || 0), 0);
+  if (currentWidth <= availableWidth) return columns;
+
+  const scale = availableWidth / currentWidth;
+  return columns.map((col) => ({
+    ...col,
+    width: Math.max(28, Math.floor(col.width * scale)),
+  }));
+}
+
 const ASSETS_DIR = path.resolve(process.cwd(), "assets");
 const asset = (name) => path.join(ASSETS_DIR, name);
 
@@ -182,6 +195,7 @@ export async function createLegacyArrearSummaryPdf({
     { key: "total", width: 95, align: "right" },
     { key: "advance", width: 90, align: "right" }
   );
+  const fittedColumns = fitColumnsToPage(doc, columns);
 
   let y = doc.page.margins.top + 46;
   const pageBottom = () => doc.page.height - doc.page.margins.bottom - 24;
@@ -200,19 +214,19 @@ export async function createLegacyArrearSummaryPdf({
     advance: "Advance",
   };
 
-  y = drawRow(doc, columns, headerRow, y, { header: true });
+  y = drawRow(doc, fittedColumns, headerRow, y, { header: true });
 
   rows.forEach((row, index) => {
     if (y > pageBottom()) {
       doc.addPage({ size: "A4", layout: "landscape", margin: 24 });
       drawPageHeader();
       y = doc.page.margins.top + 46;
-      y = drawRow(doc, columns, headerRow, y, { header: true });
+      y = drawRow(doc, fittedColumns, headerRow, y, { header: true });
     }
 
     y = drawRow(
       doc,
-      columns,
+      fittedColumns,
       {
         index: index + 1,
         division: row.division || "-",
@@ -234,12 +248,12 @@ export async function createLegacyArrearSummaryPdf({
     doc.addPage({ size: "A4", layout: "landscape", margin: 24 });
     drawPageHeader();
     y = doc.page.margins.top + 46;
-    y = drawRow(doc, columns, headerRow, y, { header: true });
+    y = drawRow(doc, fittedColumns, headerRow, y, { header: true });
   }
 
   y = drawRow(
     doc,
-    columns,
+    fittedColumns,
     {
       index: "",
       division: "TOTAL",

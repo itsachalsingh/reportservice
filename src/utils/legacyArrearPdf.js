@@ -86,12 +86,23 @@ function drawImageSafe(doc, imgPath, x, y, width, height) {
 }
 
 function formatGeneratedAt(date = new Date()) {
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const yyyy = date.getFullYear();
-  const hh = String(date.getHours()).padStart(2, "0");
-  const min = String(date.getMinutes()).padStart(2, "0");
-  const ss = String(date.getSeconds()).padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type) => parts.find((p) => p.type === type)?.value || "00";
+  const dd = get("day");
+  const mm = get("month");
+  const yyyy = get("year");
+  const hh = get("hour");
+  const min = get("minute");
+  const ss = get("second");
   return `${dd}-${mm}-${yyyy}, ${hh}:${min}:${ss}`;
 }
 

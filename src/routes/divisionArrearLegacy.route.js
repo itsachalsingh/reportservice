@@ -54,7 +54,13 @@ async function createDivisionLegacyArrearReport(req, reply) {
     const pdf = await createLegacyArrearSummaryPdf({
       rows: Array.isArray(data?.rows) ? data.rows : [],
       totals: data?.totals || {},
-      filters: data?.filters || {},
+      department:
+        req.body?.departmentId ||
+        req.body?.department_id ||
+        req.body?.department ||
+        data?.filters?.departmentId ||
+        data?.filters?.department_id ||
+        data?.filters?.department,
       grouping: data?.grouping || {},
     });
 

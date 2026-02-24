@@ -1,4 +1,6 @@
 import PDFDocument from "pdfkit";
+import fs from "fs";
+import path from "path";
 
 function formatMoney(value) {
   const amount = Number(value) || 0;
@@ -60,10 +62,30 @@ function drawRow(doc, columns, row, y, { header = false } = {}) {
   return y + rowHeight;
 }
 
+const ASSETS_DIR = path.resolve(process.cwd(), "assets");
+const asset = (name) => path.join(ASSETS_DIR, name);
+
+function drawImageSafe(doc, imgPath, x, y, width, height) {
+  try {
+    if (!imgPath || !fs.existsSync(imgPath)) return;
+    doc.image(imgPath, x, y, { width, height });
+  } catch {}
+}
+
+function formatGeneratedAt(date = new Date()) {
+  const dd = String(date.getDate()).padStart(2, "0");
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  const hh = String(date.getHours()).padStart(2, "0");
+  const min = String(date.getMinutes()).padStart(2, "0");
+  const ss = String(date.getSeconds()).padStart(2, "0");
+  return `${dd}-${mm}-${yyyy}, ${hh}:${min}:${ss}`;
+}
+
 export async function createLegacyArrearSummaryPdf({
   rows = [],
   totals = {},
-  filters = {},
+  department,
   grouping = {},
 } = {}) {
   const doc = new PDFDocument({
@@ -80,26 +102,56 @@ export async function createLegacyArrearSummaryPdf({
     doc.on("error", reject);
   });
 
-  doc.font("Helvetica-Bold").fontSize(14).text("Legacy Arrear Summary Report", {
-    align: "left",
-  });
-  doc.moveDown(0.3);
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .text(`Generated At: ${new Date().toLocaleString("en-IN", { hour12: false })}`);
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .text(
-      `Filters: department=${filters.department_id || "-"}, division=${filters.division || filters.division_id || "-"}, collection_center=${filters.collection_center || filters.collection_center_id || "-"}, scheme=${filters.scheme || filters.scheme_id || "-"}`
-    );
-  doc
-    .font("Helvetica")
-    .fontSize(9)
-    .text(
-      `Grouping: division + collection_center=${grouping.by_collection_center ? "yes" : "no"} + scheme=${grouping.by_scheme ? "yes" : "no"}`
-    );
+  const watermarkPath = asset("watermark.png");
+  const ujsLogoPath = asset("logo2.png");
+  const ujnLogoPath = asset("logo3.jpg");
+  const generatedAtText = formatGeneratedAt(new Date());
+  const deptToken = String(department || "").trim().toUpperCase();
+  const isUJN = deptToken === "N" || deptToken === "UJN";
+  const isUJS = deptToken === "J" || deptToken === "UJS";
+  const headerLogoPath = isUJN ? ujnLogoPath : isUJS ? ujsLogoPath : null;
+
+  function drawPageHeader() {
+    if (fs.existsSync(watermarkPath)) {
+      doc.save();
+      doc.opacity(0.06);
+      const wmWidth = doc.page.width * 0.55;
+      const wmX = (doc.page.width - wmWidth) / 2;
+      const wmY = doc.page.margins.top + 20;
+      drawImageSafe(doc, watermarkPath, wmX, wmY, wmWidth);
+      doc.opacity(1).restore();
+    }
+
+    const logoSize = 30;
+    const headerTop = doc.page.margins.top - 4;
+    const logoX = doc.page.margins.left;
+    drawImageSafe(doc, headerLogoPath, logoX, headerTop, logoSize, logoSize);
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(16)
+      .fillColor("#111827")
+      .text("Legacy Arrear Summary Report", doc.page.margins.left, headerTop + 2, {
+        width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+        align: "center",
+      });
+
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .fillColor("#111827")
+      .text(
+        `Generated At: ${generatedAtText}`,
+        doc.page.margins.left,
+        headerTop + 24,
+        {
+          width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+          align: "center",
+        }
+      );
+  }
+
+  drawPageHeader();
 
   const columns = [
     { key: "index", width: 36, align: "right" },
@@ -121,7 +173,7 @@ export async function createLegacyArrearSummaryPdf({
     { key: "total_arrear", width: 100, align: "right" }
   );
 
-  let y = doc.y + 10;
+  let y = doc.page.margins.top + 46;
   const pageBottom = () => doc.page.height - doc.page.margins.bottom - 24;
 
   const headerRow = {
@@ -143,7 +195,8 @@ export async function createLegacyArrearSummaryPdf({
   rows.forEach((row, index) => {
     if (y > pageBottom()) {
       doc.addPage({ size: "A4", layout: "landscape", margin: 24 });
-      y = doc.page.margins.top;
+      drawPageHeader();
+      y = doc.page.margins.top + 46;
       y = drawRow(doc, columns, headerRow, y, { header: true });
     }
 
@@ -169,7 +222,8 @@ export async function createLegacyArrearSummaryPdf({
 
   if (y > pageBottom()) {
     doc.addPage({ size: "A4", layout: "landscape", margin: 24 });
-    y = doc.page.margins.top;
+    drawPageHeader();
+    y = doc.page.margins.top + 46;
     y = drawRow(doc, columns, headerRow, y, { header: true });
   }
 

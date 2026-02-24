@@ -14,6 +14,12 @@ const reportBody = {
     collection_center_id: { type: "string" },
     scheme: { type: "string" },
     scheme_id: { type: "string" },
+    revenue_unit: { type: "string" },
+    revenue_unit_id: { type: "string" },
+    ledger: { type: "string" },
+    ledger_id: { type: "string" },
+    lane: { type: "string" },
+    lane_id: { type: "string" },
   },
   required: [],
 };
@@ -30,12 +36,14 @@ async function createReportHandler(req, reply) {
     "collection_center"
   );
   const scheme_id = coalesceId(req.body, "scheme_id", "scheme");
+  const revenue_unit_id = coalesceId(req.body, "revenue_unit_id", "revenue_unit");
+  const ledger_id = coalesceId(req.body, "ledger_id", "ledger");
+  const lane_id = coalesceId(req.body, "lane_id", "lane");
 
-  if (!department_id || !division_id) {
+  if (!department_id) {
     return reply.code(400).send({
       ok: false,
-      message:
-        "department and division are required (use *_id or name)",
+      message: "department is required (use department_id or department)",
     });
   }
 
@@ -45,6 +53,9 @@ async function createReportHandler(req, reply) {
       division_id,
       collection_center_id,
       scheme_id,
+      revenue_unit_id,
+      ledger_id,
+      lane_id,
     });
 
     const rows = Array.isArray(data?.rows) ? data.rows : [];

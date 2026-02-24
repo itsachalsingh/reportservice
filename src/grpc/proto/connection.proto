@@ -145,6 +145,9 @@ message ConnectionCountSummaryRequest {
   string division_id = 2;
   string collection_center_id = 3;
   string scheme_id = 4;
+  string revenue_unit_id = 5;
+  string ledger_id = 6;
+  string lane_id = 7;
 }
 
 message ConnectionCountSummaryRow {

@@ -82,6 +82,16 @@ function formatGeneratedAt(date = new Date()) {
   return `${dd}-${mm}-${yyyy}, ${hh}:${min}:${ss}`;
 }
 
+function computeTotalArrear(item = {}) {
+  return (
+    Number(item.water_arrear || 0) +
+    Number(item.sewer_arrear || 0) +
+    Number(item.meter_rent_arrear || 0) +
+    Number(item.other_arrear || 0) +
+    Number(item.late_fine || 0)
+  );
+}
+
 export async function createLegacyArrearSummaryPdf({
   rows = [],
   totals = {},
@@ -169,8 +179,8 @@ export async function createLegacyArrearSummaryPdf({
     { key: "meter_rent_arrear", width: 110, align: "right" },
     { key: "other_arrear", width: 95, align: "right" },
     { key: "late_fine", width: 90, align: "right" },
-    { key: "advance", width: 90, align: "right" },
-    { key: "total_arrear", width: 100, align: "right" }
+    { key: "total", width: 95, align: "right" },
+    { key: "advance", width: 90, align: "right" }
   );
 
   let y = doc.page.margins.top + 46;
@@ -186,8 +196,8 @@ export async function createLegacyArrearSummaryPdf({
     meter_rent_arrear: "Meter Rent Arrear",
     other_arrear: "Other Arrear",
     late_fine: "Late Fine",
+    total: "Total",
     advance: "Advance",
-    total_arrear: "Total Arrear",
   };
 
   y = drawRow(doc, columns, headerRow, y, { header: true });
@@ -213,8 +223,8 @@ export async function createLegacyArrearSummaryPdf({
         meter_rent_arrear: formatMoney(row.meter_rent_arrear),
         other_arrear: formatMoney(row.other_arrear),
         late_fine: formatMoney(row.late_fine),
+        total: formatMoney(computeTotalArrear(row)),
         advance: formatMoney(row.advance),
-        total_arrear: formatMoney(row.total_arrear),
       },
       y
     );
@@ -240,8 +250,8 @@ export async function createLegacyArrearSummaryPdf({
       meter_rent_arrear: formatMoney(totals.meter_rent_arrear),
       other_arrear: formatMoney(totals.other_arrear),
       late_fine: formatMoney(totals.late_fine),
+      total: formatMoney(computeTotalArrear(totals)),
       advance: formatMoney(totals.advance),
-      total_arrear: formatMoney(totals.total_arrear),
     },
     y,
     { header: true }

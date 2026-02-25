@@ -160,6 +160,8 @@ export async function getDailyIncomeReportRPC(input) {
     revenue_unit_id: input?.revenue_unit_id || null,
     ledger_id: input?.ledger_id || null,
     lane_id: input?.lane_id || null,
+    page: input?.page || 1,
+    limit: input?.limit || 50,
     payment_methods: input?.payment_methods || input?.payment_method || null,
     types: input?.types || input?.type || null,
     area_type: input?.area_type || null,

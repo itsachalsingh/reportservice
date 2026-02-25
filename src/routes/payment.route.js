@@ -22,6 +22,8 @@ const dailyIncomeBody = {
     revenue_unit_id: { type: "string" },
     ledger_id: { type: "string" },
     lane_id: { type: "string" },
+    page: { type: "integer", minimum: 1 },
+    limit: { type: "integer", minimum: 1, maximum: 500 },
     area_type: { type: "string", enum: ["urban", "rural", "all"] },
     payment_methods: {
       oneOf: [
@@ -57,6 +59,8 @@ async function createDailyIncomeHandler(req, reply) {
     revenue_unit_id: req.body?.revenue_unit_id,
     ledger_id: req.body?.ledger_id,
     lane_id: req.body?.lane_id,
+    page: req.body?.page,
+    limit: req.body?.limit,
     payment_methods: req.body?.payment_methods || req.body?.payment_method,
     types: req.body?.types || req.body?.type,
     area_type: req.body?.area_type,

@@ -65,6 +65,32 @@ message BillCollectionDivisionSummaryRow {
   double total_bill_remaining_paise = 10;
 }
 
+message BillCollectionCenterSummaryRow {
+  string collection_center_id = 1;
+  string collection_center_name = 2;
+  int64 total_bill_generated_count = 3;
+  int64 billed_consumers_count = 4;
+  double total_bill_generated_value = 5;
+  double total_bill_collected = 6;
+  double total_bill_remaining = 7;
+  double total_bill_generated_value_paise = 8;
+  double total_bill_collected_paise = 9;
+  double total_bill_remaining_paise = 10;
+}
+
+message BillCollectionSchemeSummaryRow {
+  string scheme_id = 1;
+  string scheme_name = 2;
+  int64 total_bill_generated_count = 3;
+  int64 billed_consumers_count = 4;
+  double total_bill_generated_value = 5;
+  double total_bill_collected = 6;
+  double total_bill_remaining = 7;
+  double total_bill_generated_value_paise = 8;
+  double total_bill_collected_paise = 9;
+  double total_bill_remaining_paise = 10;
+}
+
 message BillCollectionSummaryData {
   int64 total_consumers = 1;
   int64 total_bill_generated_count = 2;
@@ -79,6 +105,8 @@ message BillCollectionSummaryData {
   int32 bill_month_count = 11;
   int64 billed_consumers_count = 12;
   repeated BillCollectionDivisionSummaryRow division_wise = 13;
+  repeated BillCollectionCenterSummaryRow collection_center_wise = 14;
+  repeated BillCollectionSchemeSummaryRow scheme_wise = 15;
 }
 
 message BillCollectionSummaryResponse {

@@ -20,6 +20,12 @@ const reportBody = {
     scheme: { type: "string" },
     scheme_id: { type: "string" },
     schemeId: { type: "string" },
+    revenue_unit_id: { type: "string" },
+    revenueUnitId: { type: "string" },
+    ledger_id: { type: "string" },
+    ledgerId: { type: "string" },
+    lane_id: { type: "string" },
+    laneId: { type: "string" },
     district: { type: "string" },
     area_type: { type: "string", enum: ["urban", "rural", "all"] },
     areaType: { type: "string", enum: ["urban", "rural", "all"] },
@@ -57,6 +63,30 @@ async function fetchDepartmentDivisions(departmentId = "") {
   });
   const divisions = response?.divisions;
   return Array.isArray(divisions) ? divisions : [];
+}
+
+async function resolveCustomerCountForScope({
+  body,
+  department_id,
+  division_id = "",
+  collection_center_id = "",
+  scheme_id = "",
+}) {
+  try {
+    const conn = await getConnectionCountSummary({
+      department_id,
+      division_id,
+      collection_center_id,
+      scheme_id,
+      revenue_unit_id: body.revenue_unit_id || body.revenueUnitId || "",
+      ledger_id: body.ledger_id || body.ledgerId || "",
+      lane_id: body.lane_id || body.laneId || "",
+    });
+    const rows = Array.isArray(conn?.rows) ? conn.rows : [];
+    return sumConnectionRows(rows);
+  } catch {
+    return 0;
+  }
 }
 
 async function createBillCollectionSummaryHandler(req, reply) {
@@ -107,6 +137,14 @@ async function createBillCollectionSummaryHandler(req, reply) {
     const divisionWise = Array.isArray(billingSummary?.data?.division_wise)
       ? billingSummary.data.division_wise
       : [];
+    const collectionCenterWise = Array.isArray(
+      billingSummary?.data?.collection_center_wise
+    )
+      ? billingSummary.data.collection_center_wise
+      : [];
+    const schemeWise = Array.isArray(billingSummary?.data?.scheme_wise)
+      ? billingSummary.data.scheme_wise
+      : [];
     const hasDivisionFilter = Boolean(division_id);
 
     const billingDivisionMap = new Map(
@@ -139,26 +177,13 @@ async function createBillCollectionSummaryHandler(req, reply) {
           const rowDivisionId = String(division._id || "").trim();
           const rowDivisionName = String(division.name || "").trim();
           const billRow = billingDivisionMap.get(rowDivisionId) || {};
-
-          const connectionDivisionPayload = {
+          const divisionCustomerCount = await resolveCustomerCountForScope({
+            body,
             department_id,
             division_id: rowDivisionId,
-            division: rowDivisionId ? "" : rowDivisionName,
             collection_center_id,
             scheme_id,
-            revenue_unit_id: body.revenue_unit_id || body.revenueUnitId || "",
-            ledger_id: body.ledger_id || body.ledgerId || "",
-            lane_id: body.lane_id || body.laneId || "",
-          };
-
-          let divisionCustomerCount = 0;
-          try {
-            const divisionConn = await getConnectionCountSummary(connectionDivisionPayload);
-            const rows = Array.isArray(divisionConn?.rows) ? divisionConn.rows : [];
-            divisionCustomerCount = sumConnectionRows(rows);
-          } catch {
-            divisionCustomerCount = 0;
-          }
+          });
 
           const billedCustomers = Number(billRow?.billed_consumers_count || 0);
           return {
@@ -168,6 +193,92 @@ async function createBillCollectionSummaryHandler(req, reply) {
             total_bills_generated: Number(billRow?.total_bill_generated_count || 0),
             total_billed_customers: billedCustomers,
             pending_bill_generation_count: Math.max(divisionCustomerCount - billedCustomers, 0),
+            total_generated_amount: Number(billRow?.total_bill_generated_value || 0),
+            total_collected_amount: Number(billRow?.total_bill_collected || 0),
+            total_pending_amount: Number(billRow?.total_bill_remaining || 0),
+          };
+        })
+    );
+
+    const billingCollectionCenterMap = new Map(
+      collectionCenterWise.map((row) => [String(row?.collection_center_id || "").trim(), row])
+    );
+    const targetCollectionCenters = [...collectionCenterWise];
+    if (
+      collection_center_id &&
+      !billingCollectionCenterMap.has(String(collection_center_id).trim())
+    ) {
+      targetCollectionCenters.push({
+        collection_center_id: String(collection_center_id).trim(),
+        collection_center_name: String(
+          body.collection_center || body.collectionCenter || ""
+        ).trim(),
+      });
+    }
+
+    const collectionCenterWiseDetails = await Promise.all(
+      targetCollectionCenters
+        .filter((row) => String(row?.collection_center_id || "").trim())
+        .map(async (row) => {
+          const rowCollectionCenterId = String(row?.collection_center_id || "").trim();
+          const billRow =
+            billingCollectionCenterMap.get(rowCollectionCenterId) || row || {};
+          const customerCount = await resolveCustomerCountForScope({
+            body,
+            department_id,
+            division_id,
+            collection_center_id: rowCollectionCenterId,
+            scheme_id,
+          });
+          const billedCustomers = Number(billRow?.billed_consumers_count || 0);
+          return {
+            collection_center_id: rowCollectionCenterId,
+            collection_center_name: String(
+              billRow?.collection_center_name || row?.collection_center_name || ""
+            ).trim(),
+            total_customers: customerCount,
+            total_bills_generated: Number(billRow?.total_bill_generated_count || 0),
+            total_billed_customers: billedCustomers,
+            pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
+            total_generated_amount: Number(billRow?.total_bill_generated_value || 0),
+            total_collected_amount: Number(billRow?.total_bill_collected || 0),
+            total_pending_amount: Number(billRow?.total_bill_remaining || 0),
+          };
+        })
+    );
+
+    const billingSchemeMap = new Map(
+      schemeWise.map((row) => [String(row?.scheme_id || "").trim(), row])
+    );
+    const targetSchemes = [...schemeWise];
+    if (scheme_id && !billingSchemeMap.has(String(scheme_id).trim())) {
+      targetSchemes.push({
+        scheme_id: String(scheme_id).trim(),
+        scheme_name: String(body.scheme || "").trim(),
+      });
+    }
+
+    const schemeWiseDetails = await Promise.all(
+      targetSchemes
+        .filter((row) => String(row?.scheme_id || "").trim())
+        .map(async (row) => {
+          const rowSchemeId = String(row?.scheme_id || "").trim();
+          const billRow = billingSchemeMap.get(rowSchemeId) || row || {};
+          const customerCount = await resolveCustomerCountForScope({
+            body,
+            department_id,
+            division_id,
+            collection_center_id,
+            scheme_id: rowSchemeId,
+          });
+          const billedCustomers = Number(billRow?.billed_consumers_count || 0);
+          return {
+            scheme_id: rowSchemeId,
+            scheme_name: String(billRow?.scheme_name || row?.scheme_name || "").trim(),
+            total_customers: customerCount,
+            total_bills_generated: Number(billRow?.total_bill_generated_count || 0),
+            total_billed_customers: billedCustomers,
+            pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
             total_generated_amount: Number(billRow?.total_bill_generated_value || 0),
             total_collected_amount: Number(billRow?.total_bill_collected || 0),
             total_pending_amount: Number(billRow?.total_bill_remaining || 0),
@@ -190,6 +301,8 @@ async function createBillCollectionSummaryHandler(req, reply) {
         bill_months: billMonths,
         bill_month_count: billMonthCount,
         division_wise_details: divisionWiseDetails,
+        collection_center_wise_details: collectionCenterWiseDetails,
+        scheme_wise_details: schemeWiseDetails,
       },
     };
 

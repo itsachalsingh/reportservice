@@ -90,6 +90,7 @@ async function createBillCollectionSummaryHandler(req, reply) {
     const billMonths = Array.isArray(billingSummary?.data?.bill_months)
       ? billingSummary.data.bill_months
       : [];
+    const billMonthCount = Number(billingSummary?.data?.bill_month_count || 0);
 
     const merged = {
       success: Boolean(billingSummary?.success),
@@ -104,7 +105,7 @@ async function createBillCollectionSummaryHandler(req, reply) {
         total_collected_amount: totalCollectedAmount,
         total_pending_amount: totalPendingAmount,
         bill_months: billMonths,
-        bill_month_count: billMonths.length,
+        bill_month_count: billMonthCount,
       },
       consumer_source: "uwbs-adminservice.connection",
     };

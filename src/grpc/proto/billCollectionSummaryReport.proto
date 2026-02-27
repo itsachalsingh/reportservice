@@ -63,7 +63,8 @@ message BillCollectionSummaryData {
   double total_bill_collected_paise = 8;
   double total_bill_remaining_paise = 9;
   repeated string bill_months = 10;
-  int32 bill_month_count = 11;\n  int64 billed_consumers_count = 12;
+  int32 bill_month_count = 11;
+  int64 billed_consumers_count = 12;
 }
 
 message BillCollectionSummaryResponse {

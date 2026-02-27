@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package billcollectionsummary;
+
+service BillCollectionSummaryReportService {
+  rpc GetBillCollectionSummary (BillCollectionSummaryRequest) returns (BillCollectionSummaryResponse);
+}
+
+message BillCollectionSummaryRequest {
+  string department = 1;
+  string department_id = 2;
+  string departmentId = 3;
+  string division = 4;
+  string division_id = 5;
+  string divisionId = 6;
+  string collection_center = 7;
+  string collection_center_id = 8;
+  string collectionCenter = 9;
+  string collectionCenterId = 10;
+  string scheme = 11;
+  string scheme_id = 12;
+  string schemeId = 13;
+  string district = 14;
+  string area_type = 15;
+  string areaType = 16;
+  string ward = 17;
+  string village = 18;
+  string start_date = 19;
+  string startDate = 20;
+  string from_date = 21;
+  string from = 22;
+  string end_date = 23;
+  string endDate = 24;
+  string to_date = 25;
+  string to = 26;
+  string bill_month = 27;
+  string billMonth = 28;
+  string month = 29;
+}
+
+message BillCollectionSummaryFilters {
+  string department_id = 1;
+  string division_id = 2;
+  string collection_center_id = 3;
+  string scheme_id = 4;
+  string district = 5;
+  string area_type = 6;
+  string ward = 7;
+  string village = 8;
+  string start_date = 9;
+  string end_date = 10;
+  string bill_month = 11;
+}
+
+message BillCollectionSummaryData {
+  int64 total_consumers = 1;
+  int64 total_bill_generated_count = 2;
+  int64 remaining_bill_generated_count = 3;
+  double total_bill_generated_value = 4;
+  double total_bill_collected = 5;
+  double total_bill_remaining = 6;
+  double total_bill_generated_value_paise = 7;
+  double total_bill_collected_paise = 8;
+  double total_bill_remaining_paise = 9;
+  repeated string bill_months = 10;
+  int32 bill_month_count = 11;
+}
+
+message BillCollectionSummaryResponse {
+  bool success = 1;
+  string message = 2;
+  BillCollectionSummaryFilters filters = 3;
+  BillCollectionSummaryData data = 4;
+}

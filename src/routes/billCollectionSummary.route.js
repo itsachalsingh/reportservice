@@ -1,6 +1,7 @@
 import fp from "fastify-plugin";
 import { fetchBillCollectionSummary } from "../utils/grpc/billCollectionSummaryClient.js";
 import { getConnectionCountSummary } from "../utils/grpc/connectionClient.js";
+import { getDivisionsByDepartment } from "../utils/grpc/divisionClient.js";
 
 const reportBody = {
   type: "object",
@@ -38,6 +39,26 @@ const reportBody = {
   },
 };
 
+function sumConnectionRows(rows = []) {
+  return rows.reduce((acc, item) => {
+    const active = Number(item?.active || 0);
+    const inactive = Number(item?.inactive || 0);
+    const rowTotal = active + inactive;
+    return acc + (Number.isFinite(rowTotal) ? rowTotal : 0);
+  }, 0);
+}
+
+async function fetchDepartmentDivisions(departmentId = "") {
+  const dep = String(departmentId || "").trim();
+  if (!dep) return [];
+  const response = await getDivisionsByDepartment({
+    department_id: dep,
+    departmentId: dep,
+  });
+  const divisions = response?.divisions;
+  return Array.isArray(divisions) ? divisions : [];
+}
+
 async function createBillCollectionSummaryHandler(req, reply) {
   const body = req.body || {};
   const department_id = body.department_id || body.departmentId || body.department || "";
@@ -60,16 +81,8 @@ async function createBillCollectionSummaryHandler(req, reply) {
       }),
     ]);
 
-    const connectionRows = Array.isArray(connectionSummary?.rows)
-      ? connectionSummary.rows
-      : [];
-
-    const totalConsumersFromConnection = connectionRows.reduce((acc, row) => {
-      const active = Number(row?.active || 0);
-      const inactive = Number(row?.inactive || 0);
-      const rowTotal = active + inactive;
-      return acc + (Number.isFinite(rowTotal) ? rowTotal : 0);
-    }, 0);
+    const connectionRows = Array.isArray(connectionSummary?.rows) ? connectionSummary.rows : [];
+    const totalConsumersFromConnection = sumConnectionRows(connectionRows);
     const billedConsumersCount = Number(billingSummary?.data?.billed_consumers_count || 0);
     const pendingBillNotGeneratedCount = Math.max(
       totalConsumersFromConnection - billedConsumersCount,
@@ -96,57 +109,71 @@ async function createBillCollectionSummaryHandler(req, reply) {
       : [];
     const hasDivisionFilter = Boolean(division_id);
 
-    const divisionWiseDetails = hasDivisionFilter
-      ? []
-      : await Promise.all(
-          divisionWise.map(async (row) => {
-            const rowDivisionId = String(row?.division_id || "").trim();
-            const rowDivisionName = String(row?.division_name || "").trim();
+    const billingDivisionMap = new Map(
+      divisionWise.map((row) => [String(row?.division_id || "").trim(), row])
+    );
 
-            const connectionDivisionPayload = {
-              department_id,
-              division_id: rowDivisionId,
-              division: rowDivisionId ? "" : rowDivisionName,
-              collection_center_id,
-              scheme_id,
-              revenue_unit_id: body.revenue_unit_id || body.revenueUnitId || "",
-              ledger_id: body.ledger_id || body.ledgerId || "",
-              lane_id: body.lane_id || body.laneId || "",
-            };
+    let targetDivisions = [];
+    if (hasDivisionFilter) {
+      targetDivisions = [{ _id: division_id, name: body.division || "" }];
+    } else {
+      try {
+        const allDivisions = await fetchDepartmentDivisions(department_id);
+        targetDivisions = allDivisions.map((d) => ({
+          _id: String(d?.id || d?._id || "").trim(),
+          name: String(d?.name || "").trim(),
+        }));
+      } catch {
+        // Fallback to billed divisions only if admin division list is unavailable.
+        targetDivisions = divisionWise.map((row) => ({
+          _id: String(row?.division_id || "").trim(),
+          name: String(row?.division_name || "").trim(),
+        }));
+      }
+    }
 
-            let divisionCustomerCount = 0;
-            try {
-              const divisionConn = await getConnectionCountSummary(
-                connectionDivisionPayload
-              );
-              const rows = Array.isArray(divisionConn?.rows) ? divisionConn.rows : [];
-              divisionCustomerCount = rows.reduce((acc, item) => {
-                const active = Number(item?.active || 0);
-                const inactive = Number(item?.inactive || 0);
-                const rowTotal = active + inactive;
-                return acc + (Number.isFinite(rowTotal) ? rowTotal : 0);
-              }, 0);
-            } catch {
-              divisionCustomerCount = 0;
-            }
+    const divisionWiseDetails = await Promise.all(
+      targetDivisions
+        .filter((d) => d?._id)
+        .map(async (division) => {
+          const rowDivisionId = String(division._id || "").trim();
+          const rowDivisionName = String(division.name || "").trim();
+          const billRow = billingDivisionMap.get(rowDivisionId) || {};
 
-            const billedCustomers = Number(row?.billed_consumers_count || 0);
-            return {
-              division_id: rowDivisionId,
-              division_name: rowDivisionName,
-              total_customers: divisionCustomerCount,
-              total_bills_generated: Number(row?.total_bill_generated_count || 0),
-              total_billed_customers: billedCustomers,
-              pending_bill_generation_count: Math.max(
-                divisionCustomerCount - billedCustomers,
-                0
-              ),
-              total_generated_amount: Number(row?.total_bill_generated_value || 0),
-              total_collected_amount: Number(row?.total_bill_collected || 0),
-              total_pending_amount: Number(row?.total_bill_remaining || 0),
-            };
-          })
-        );
+          const connectionDivisionPayload = {
+            department_id,
+            division_id: rowDivisionId,
+            division: rowDivisionId ? "" : rowDivisionName,
+            collection_center_id,
+            scheme_id,
+            revenue_unit_id: body.revenue_unit_id || body.revenueUnitId || "",
+            ledger_id: body.ledger_id || body.ledgerId || "",
+            lane_id: body.lane_id || body.laneId || "",
+          };
+
+          let divisionCustomerCount = 0;
+          try {
+            const divisionConn = await getConnectionCountSummary(connectionDivisionPayload);
+            const rows = Array.isArray(divisionConn?.rows) ? divisionConn.rows : [];
+            divisionCustomerCount = sumConnectionRows(rows);
+          } catch {
+            divisionCustomerCount = 0;
+          }
+
+          const billedCustomers = Number(billRow?.billed_consumers_count || 0);
+          return {
+            division_id: rowDivisionId,
+            division_name: rowDivisionName || String(billRow?.division_name || ""),
+            total_customers: divisionCustomerCount,
+            total_bills_generated: Number(billRow?.total_bill_generated_count || 0),
+            total_billed_customers: billedCustomers,
+            pending_bill_generation_count: Math.max(divisionCustomerCount - billedCustomers, 0),
+            total_generated_amount: Number(billRow?.total_bill_generated_value || 0),
+            total_collected_amount: Number(billRow?.total_bill_collected || 0),
+            total_pending_amount: Number(billRow?.total_bill_remaining || 0),
+          };
+        })
+    );
 
     const merged = {
       success: Boolean(billingSummary?.success),

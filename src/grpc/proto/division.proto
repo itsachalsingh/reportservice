@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package division;
+
+// Division message definition
+message Division {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string status = 4;
+}
+
+// Request message
+message GetDivisionByIdRequest {
+  string id = 1;
+}
+
+// Response message
+message GetDivisionByIdResponse {
+  Division division = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetDivisionsByDepartmentRequest {
+  string department_id = 1;
+  string departmentId = 2;
+}
+
+message GetDivisionsByDepartmentResponse {
+  repeated Division divisions = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Division service definition
+service DivisionService {
+  // Get division by ID
+  rpc GetDivisionById(GetDivisionByIdRequest) returns (GetDivisionByIdResponse);
+  rpc GetDivisionsByDepartment(GetDivisionsByDepartmentRequest) returns (GetDivisionsByDepartmentResponse);
+}

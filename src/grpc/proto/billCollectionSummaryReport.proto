@@ -52,6 +52,19 @@ message BillCollectionSummaryFilters {
   string bill_month = 11;
 }
 
+message BillCollectionDivisionSummaryRow {
+  string division_id = 1;
+  string division_name = 2;
+  int64 total_bill_generated_count = 3;
+  int64 billed_consumers_count = 4;
+  double total_bill_generated_value = 5;
+  double total_bill_collected = 6;
+  double total_bill_remaining = 7;
+  double total_bill_generated_value_paise = 8;
+  double total_bill_collected_paise = 9;
+  double total_bill_remaining_paise = 10;
+}
+
 message BillCollectionSummaryData {
   int64 total_consumers = 1;
   int64 total_bill_generated_count = 2;
@@ -65,6 +78,7 @@ message BillCollectionSummaryData {
   repeated string bill_months = 10;
   int32 bill_month_count = 11;
   int64 billed_consumers_count = 12;
+  repeated BillCollectionDivisionSummaryRow division_wise = 13;
 }
 
 message BillCollectionSummaryResponse {

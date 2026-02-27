@@ -91,6 +91,62 @@ async function createBillCollectionSummaryHandler(req, reply) {
       ? billingSummary.data.bill_months
       : [];
     const billMonthCount = Number(billingSummary?.data?.bill_month_count || 0);
+    const divisionWise = Array.isArray(billingSummary?.data?.division_wise)
+      ? billingSummary.data.division_wise
+      : [];
+    const hasDivisionFilter = Boolean(division_id);
+
+    const divisionWiseDetails = hasDivisionFilter
+      ? []
+      : await Promise.all(
+          divisionWise.map(async (row) => {
+            const rowDivisionId = String(row?.division_id || "").trim();
+            const rowDivisionName = String(row?.division_name || "").trim();
+
+            const connectionDivisionPayload = {
+              department_id,
+              division_id: rowDivisionId,
+              division: rowDivisionId ? "" : rowDivisionName,
+              collection_center_id,
+              scheme_id,
+              revenue_unit_id: body.revenue_unit_id || body.revenueUnitId || "",
+              ledger_id: body.ledger_id || body.ledgerId || "",
+              lane_id: body.lane_id || body.laneId || "",
+            };
+
+            let divisionCustomerCount = 0;
+            try {
+              const divisionConn = await getConnectionCountSummary(
+                connectionDivisionPayload
+              );
+              const rows = Array.isArray(divisionConn?.rows) ? divisionConn.rows : [];
+              divisionCustomerCount = rows.reduce((acc, item) => {
+                const active = Number(item?.active || 0);
+                const inactive = Number(item?.inactive || 0);
+                const rowTotal = active + inactive;
+                return acc + (Number.isFinite(rowTotal) ? rowTotal : 0);
+              }, 0);
+            } catch {
+              divisionCustomerCount = 0;
+            }
+
+            const billedCustomers = Number(row?.billed_consumers_count || 0);
+            return {
+              division_id: rowDivisionId,
+              division_name: rowDivisionName,
+              total_customers: divisionCustomerCount,
+              total_bills_generated: Number(row?.total_bill_generated_count || 0),
+              total_billed_customers: billedCustomers,
+              pending_bill_generation_count: Math.max(
+                divisionCustomerCount - billedCustomers,
+                0
+              ),
+              total_generated_amount: Number(row?.total_bill_generated_value || 0),
+              total_collected_amount: Number(row?.total_bill_collected || 0),
+              total_pending_amount: Number(row?.total_bill_remaining || 0),
+            };
+          })
+        );
 
     const merged = {
       success: Boolean(billingSummary?.success),
@@ -106,8 +162,8 @@ async function createBillCollectionSummaryHandler(req, reply) {
         total_pending_amount: totalPendingAmount,
         bill_months: billMonths,
         bill_month_count: billMonthCount,
+        division_wise_details: divisionWiseDetails,
       },
-      consumer_source: "uwbs-adminservice.connection",
     };
 
     return reply.send({ ok: true, data: merged });

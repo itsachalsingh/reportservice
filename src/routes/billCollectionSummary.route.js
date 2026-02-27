@@ -42,6 +42,12 @@ const reportBody = {
     bill_month: { type: "string" },
     billMonth: { type: "string" },
     month: { type: "string" },
+    group_by_division: { type: "boolean" },
+    groupByDivision: { type: "boolean" },
+    group_by_collection_center: { type: "boolean" },
+    groupByCollectionCenter: { type: "boolean" },
+    group_by_scheme: { type: "boolean" },
+    groupByScheme: { type: "boolean" },
   },
 };
 
@@ -96,6 +102,11 @@ async function createBillCollectionSummaryHandler(req, reply) {
   const collection_center_id =
     body.collection_center_id || body.collectionCenterId || body.collection_center || body.collectionCenter || "";
   const scheme_id = body.scheme_id || body.schemeId || body.scheme || "";
+  const groupByDivision =
+    body.group_by_division ?? body.groupByDivision ?? true;
+  const groupByCollectionCenter =
+    body.group_by_collection_center ?? body.groupByCollectionCenter ?? true;
+  const groupByScheme = body.group_by_scheme ?? body.groupByScheme ?? true;
 
   try {
     const [billingSummary, connectionSummary] = await Promise.all([
@@ -300,9 +311,11 @@ async function createBillCollectionSummaryHandler(req, reply) {
         total_pending_amount: totalPendingAmount,
         bill_months: billMonths,
         bill_month_count: billMonthCount,
-        division_wise_details: divisionWiseDetails,
-        collection_center_wise_details: collectionCenterWiseDetails,
-        scheme_wise_details: schemeWiseDetails,
+        ...(groupByDivision ? { division_wise_details: divisionWiseDetails } : {}),
+        ...(groupByCollectionCenter
+          ? { collection_center_wise_details: collectionCenterWiseDetails }
+          : {}),
+        ...(groupByScheme ? { scheme_wise_details: schemeWiseDetails } : {}),
       },
     };
 

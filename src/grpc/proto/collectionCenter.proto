@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package collectionCenter;
+// Connection message definition
+message CollectionCenter {
+  string id = 1;
+  string title = 2;
+}
+
+// Request message
+message GetCollectionCenterByIdRequest {
+  string id = 1;
+}
+
+// Response message
+message GetCollectionCenterByIdResponse {
+  CollectionCenter collectionCenter = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetCollectionCentersRequest {
+  string department_id = 1;
+  string departmentId = 2;
+  string division_id = 3;
+  string divisionId = 4;
+}
+
+message GetCollectionCentersResponse {
+  repeated CollectionCenter collectionCenters = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Connection service definition
+service CollectionCenterService {
+  // Get Connection by ID
+  rpc GetCollectionCenterById(GetCollectionCenterByIdRequest) returns (GetCollectionCenterByIdResponse);
+  rpc GetCollectionCenters(GetCollectionCentersRequest) returns (GetCollectionCentersResponse);
+}

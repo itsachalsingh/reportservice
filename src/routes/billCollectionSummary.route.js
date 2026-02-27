@@ -2,6 +2,8 @@ import fp from "fastify-plugin";
 import { fetchBillCollectionSummary } from "../utils/grpc/billCollectionSummaryClient.js";
 import { getConnectionCountSummary } from "../utils/grpc/connectionClient.js";
 import { getDivisionsByDepartment } from "../utils/grpc/divisionClient.js";
+import { getSchemes } from "../utils/grpc/schemeClient.js";
+import { getCollectionCenters } from "../utils/grpc/collectionCenterClient.js";
 
 const reportBody = {
   type: "object",
@@ -92,6 +94,45 @@ async function resolveCustomerCountForScope({
     return sumConnectionRows(rows);
   } catch {
     return 0;
+  }
+}
+
+async function fetchSchemesByScope({ department_id = "", division_id = "" }) {
+  try {
+    const out = await getSchemes({
+      department_id,
+      departmentId: department_id,
+      division_id,
+      divisionId: division_id,
+    });
+    const rows = Array.isArray(out?.schemes) ? out.schemes : [];
+    return rows.map((s) => ({
+      id: String(s?.id || "").trim(),
+      title: String(s?.title || "").trim(),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCollectionCentersByScope({
+  department_id = "",
+  division_id = "",
+}) {
+  try {
+    const out = await getCollectionCenters({
+      department_id,
+      departmentId: department_id,
+      division_id,
+      divisionId: division_id,
+    });
+    const rows = Array.isArray(out?.collectionCenters) ? out.collectionCenters : [];
+    return rows.map((c) => ({
+      id: String(c?.id || "").trim(),
+      title: String(c?.title || "").trim(),
+    }));
+  } catch {
+    return [];
   }
 }
 
@@ -214,10 +255,23 @@ async function createBillCollectionSummaryHandler(req, reply) {
     const billingCollectionCenterMap = new Map(
       collectionCenterWise.map((row) => [String(row?.collection_center_id || "").trim(), row])
     );
-    const targetCollectionCenters = [...collectionCenterWise];
+    const centerMasterList = await fetchCollectionCentersByScope({
+      department_id,
+      division_id,
+    });
+    const targetCollectionCenters = centerMasterList.length
+      ? centerMasterList.map((c) => ({
+          collection_center_id: c.id,
+          collection_center_name: c.title,
+        }))
+      : [...collectionCenterWise];
     if (
       collection_center_id &&
-      !billingCollectionCenterMap.has(String(collection_center_id).trim())
+      !targetCollectionCenters.some(
+        (c) =>
+          String(c?.collection_center_id || "").trim() ===
+          String(collection_center_id).trim()
+      )
     ) {
       targetCollectionCenters.push({
         collection_center_id: String(collection_center_id).trim(),
@@ -261,8 +315,11 @@ async function createBillCollectionSummaryHandler(req, reply) {
     const billingSchemeMap = new Map(
       schemeWise.map((row) => [String(row?.scheme_id || "").trim(), row])
     );
-    const targetSchemes = [...schemeWise];
-    if (scheme_id && !billingSchemeMap.has(String(scheme_id).trim())) {
+    const schemeMasterList = await fetchSchemesByScope({ department_id, division_id });
+    const targetSchemes = schemeMasterList.length
+      ? schemeMasterList.map((s) => ({ scheme_id: s.id, scheme_name: s.title }))
+      : [...schemeWise];
+    if (scheme_id && !targetSchemes.some((s) => String(s?.scheme_id || "").trim() === String(scheme_id).trim())) {
       targetSchemes.push({
         scheme_id: String(scheme_id).trim(),
         scheme_name: String(body.scheme || "").trim(),

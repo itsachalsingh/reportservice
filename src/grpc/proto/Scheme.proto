@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package scheme;
+
+// Connection message definition
+message Scheme {
+  string id = 1;
+  string title = 2;
+}
+
+// Request message
+message GetSchemeByIdRequest {
+  string id = 1;
+}
+
+// Response message
+message GetSchemeByIdResponse {
+  Scheme scheme = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+message GetSchemesRequest {
+  string department_id = 1;
+  string departmentId = 2;
+  string division_id = 3;
+  string divisionId = 4;
+}
+
+message GetSchemesResponse {
+  repeated Scheme schemes = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Connection service definition
+service SchemeService {
+  // Get Connection by ID
+  rpc GetSchemeById(GetSchemeByIdRequest) returns (GetSchemeByIdResponse);
+  rpc GetSchemes(GetSchemesRequest) returns (GetSchemesResponse);
+}

@@ -69,6 +69,7 @@ message BillCollectionDivisionSummaryRow {
   double total_bill_generated_value_paise = 8;
   double total_bill_collected_paise = 9;
   double total_bill_remaining_paise = 10;
+  repeated string bill_months = 11;
 }
 
 message BillCollectionCenterSummaryRow {
@@ -82,6 +83,7 @@ message BillCollectionCenterSummaryRow {
   double total_bill_generated_value_paise = 8;
   double total_bill_collected_paise = 9;
   double total_bill_remaining_paise = 10;
+  repeated string bill_months = 11;
 }
 
 message BillCollectionSchemeSummaryRow {
@@ -95,6 +97,7 @@ message BillCollectionSchemeSummaryRow {
   double total_bill_generated_value_paise = 8;
   double total_bill_collected_paise = 9;
   double total_bill_remaining_paise = 10;
+  repeated string bill_months = 11;
 }
 
 message BillCollectionSummaryData {

@@ -4,6 +4,7 @@ import { getConnectionCountSummary } from "../utils/grpc/connectionClient.js";
 import { getDivisionsByDepartment } from "../utils/grpc/divisionClient.js";
 import { getSchemes } from "../utils/grpc/schemeClient.js";
 import { getCollectionCenters } from "../utils/grpc/collectionCenterClient.js";
+import { createBillCollectionSummaryPdf } from "../utils/billCollectionSummaryPdf.js";
 
 const reportBody = {
   type: "object",
@@ -140,8 +141,7 @@ async function fetchCollectionCentersByScope({
   }
 }
 
-async function createBillCollectionSummaryHandler(req, reply) {
-  const body = req.body || {};
+async function buildBillCollectionSummaryResponse(body = {}) {
   const department_id = body.department_id || body.departmentId || body.department || "";
   const division_id = body.division_id || body.divisionId || body.division || "";
   const collection_center_id =
@@ -174,11 +174,6 @@ async function createBillCollectionSummaryHandler(req, reply) {
       totalConsumersFromConnection - billedConsumersCount,
       0
     );
-    const billMonths = Array.isArray(billingSummary?.data?.bill_months)
-      ? billingSummary.data.bill_months
-      : Array.isArray(billingSummary?.data?.billMonths)
-        ? billingSummary.data.billMonths
-        : [];
     const divisionWise = Array.isArray(billingSummary?.data?.division_wise)
       ? billingSummary.data.division_wise
       : [];
@@ -249,7 +244,9 @@ async function createBillCollectionSummaryHandler(req, reply) {
               total_customers: divisionCustomerCount,
               total_billed_customers: billedCustomers,
               pending_bill_generation_count: Math.max(divisionCustomerCount - billedCustomers, 0),
-              bill_months: billMonths,
+              bill_months: Array.isArray(billRow?.bill_months)
+                ? billRow.bill_months
+                : [],
             };
           })
       );
@@ -320,7 +317,9 @@ async function createBillCollectionSummaryHandler(req, reply) {
               total_customers: customerCount,
               total_billed_customers: billedCustomers,
               pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
-              bill_months: billMonths,
+              bill_months: Array.isArray(billRow?.bill_months)
+                ? billRow.bill_months
+                : [],
             };
           })
       );
@@ -373,7 +372,9 @@ async function createBillCollectionSummaryHandler(req, reply) {
               total_customers: customerCount,
               total_billed_customers: billedCustomers,
               pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
-              bill_months: billMonths,
+              bill_months: Array.isArray(billRow?.bill_months)
+                ? billRow.bill_months
+                : [],
             };
           })
       );
@@ -394,13 +395,53 @@ async function createBillCollectionSummaryHandler(req, reply) {
         ...(groupByScheme ? { scheme_wise_details: schemeWiseDetails } : {}),
       },
     };
+    return merged;
+  } catch (err) {
+    err.message = err?.message || String(err);
+    throw err;
+  }
+}
 
+async function createBillCollectionSummaryHandler(req, reply) {
+  try {
+    const merged = await buildBillCollectionSummaryResponse(req.body || {});
     return reply.send({ ok: true, data: merged });
   } catch (err) {
     req.log.error({ err }, "bill-collection-summary-report failed");
     return reply.code(500).send({
       ok: false,
       message: "Failed to fetch bill collection summary report",
+      error: err?.message || String(err),
+    });
+  }
+}
+
+async function createBillCollectionSummaryPdfHandler(req, reply) {
+  try {
+    const body = req.body || {};
+    const merged = await buildBillCollectionSummaryResponse(body);
+    const pdf = await createBillCollectionSummaryPdf({
+      data: merged?.data || {},
+      department:
+        body?.departmentId ||
+        body?.department_id ||
+        body?.department ||
+        merged?.filters?.departmentId ||
+        merged?.filters?.department_id ||
+        merged?.filters?.department,
+    });
+    const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+    reply.header("Content-Type", "application/pdf");
+    reply.header(
+      "Content-Disposition",
+      `attachment; filename=\"bill-collection-summary-report-${ts}.pdf\"`
+    );
+    return reply.send(pdf);
+  } catch (err) {
+    req.log.error({ err }, "bill-collection-summary-report-pdf failed");
+    return reply.code(500).send({
+      ok: false,
+      message: "Failed to fetch bill collection summary report pdf",
       error: err?.message || String(err),
     });
   }
@@ -421,6 +462,20 @@ async function routes(fastify, opts) {
       ),
     },
     createBillCollectionSummaryHandler
+  );
+
+  fastify.post(
+    "/bill-collection-summary-report-pdf",
+    {
+      ...authRoute(
+        {
+          tags: ["Billing Report"],
+          body: reportBody,
+        },
+        "Billing Report"
+      ),
+    },
+    createBillCollectionSummaryPdfHandler
   );
 }
 

@@ -80,6 +80,7 @@ function normalizeMonths(value) {
 
 export async function createBillCollectionSummaryPdf({
   data = {},
+  billCycle = 0,
   department,
 } = {}) {
   const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 24 });
@@ -134,7 +135,9 @@ export async function createBillCollectionSummaryPdf({
 
   const summaryText = `Total Customers: ${Number(data.total_customers || 0)}    Total Billed Customers: ${Number(
     data.total_billed_customers || 0
-  )}    Pending Bill Generation: ${Number(data.pending_bill_generation_count || 0)}`;
+  )}    Pending Bill Generation: ${Number(data.pending_bill_generation_count || 0)}    Bill Cycle: ${Number(
+    billCycle || 0
+  )}`;
   doc.font("Helvetica-Bold").fontSize(10).fillColor("#111827").text(summaryText, doc.page.margins.left, y);
   y += 18;
 
@@ -145,6 +148,7 @@ export async function createBillCollectionSummaryPdf({
       nameKey: "division_name",
       idKey: "division_id",
       label: "Division",
+      showId: true,
     },
     {
       title: "Collection Center Wise Details",
@@ -152,6 +156,7 @@ export async function createBillCollectionSummaryPdf({
       nameKey: "collection_center_name",
       idKey: "collection_center_id",
       label: "Collection Center",
+      showId: false,
     },
     {
       title: "Scheme Wise Details",
@@ -159,6 +164,7 @@ export async function createBillCollectionSummaryPdf({
       nameKey: "scheme_name",
       idKey: "scheme_id",
       label: "Scheme",
+      showId: false,
     },
   ];
 
@@ -178,7 +184,7 @@ export async function createBillCollectionSummaryPdf({
     const columns = fitColumnsToPage(doc, [
       { key: "index", width: 36, align: "right" },
       { key: "name", width: 220 },
-      { key: "id", width: 140 },
+      ...(section.showId ? [{ key: "id", width: 140 }] : []),
       { key: "total_customers", width: 90, align: "right" },
       { key: "total_billed_customers", width: 110, align: "right" },
       { key: "pending_bill_generation_count", width: 130, align: "right" },
@@ -188,13 +194,13 @@ export async function createBillCollectionSummaryPdf({
     y = drawRow(
       doc,
       columns,
-      {
-        index: "S.No",
-        name: section.label,
-        id: "ID",
-        total_customers: "Customers",
-        total_billed_customers: "Billed",
-        pending_bill_generation_count: "Pending",
+        {
+          index: "S.No",
+          name: section.label,
+          ...(section.showId ? { id: "ID" } : {}),
+          total_customers: "Customers",
+          total_billed_customers: "Billed",
+          pending_bill_generation_count: "Pending",
         bill_months: "Bill Months",
       },
       y,
@@ -212,7 +218,7 @@ export async function createBillCollectionSummaryPdf({
           {
             index: "S.No",
             name: section.label,
-            id: "ID",
+            ...(section.showId ? { id: "ID" } : {}),
             total_customers: "Customers",
             total_billed_customers: "Billed",
             pending_bill_generation_count: "Pending",
@@ -226,7 +232,7 @@ export async function createBillCollectionSummaryPdf({
       y = drawRow(doc, columns, {
         index: idx + 1,
         name: row?.[section.nameKey] || "-",
-        id: row?.[section.idKey] || "-",
+        ...(section.showId ? { id: row?.[section.idKey] || "-" } : {}),
         total_customers: Number(row?.total_customers || 0),
         total_billed_customers: Number(row?.total_billed_customers || 0),
         pending_bill_generation_count: Number(row?.pending_bill_generation_count || 0),
@@ -240,4 +246,3 @@ export async function createBillCollectionSummaryPdf({
   doc.end();
   return done;
 }
-

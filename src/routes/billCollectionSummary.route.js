@@ -141,7 +141,7 @@ async function fetchCollectionCentersByScope({
   }
 }
 
-async function buildBillCollectionSummaryResponse(body = {}) {
+async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
   const department_id = body.department_id || body.departmentId || body.department || "";
   const division_id = body.division_id || body.divisionId || body.division || "";
   const collection_center_id =
@@ -174,6 +174,7 @@ async function buildBillCollectionSummaryResponse(body = {}) {
       totalConsumersFromConnection - billedConsumersCount,
       0
     );
+    const billCycle = Number(billingSummary?.data?.bill_month_count || 0);
     const divisionWise = Array.isArray(billingSummary?.data?.division_wise)
       ? billingSummary.data.division_wise
       : [];
@@ -394,6 +395,7 @@ async function buildBillCollectionSummaryResponse(body = {}) {
           : {}),
         ...(groupByScheme ? { scheme_wise_details: schemeWiseDetails } : {}),
       },
+      ...(options?.includeMeta ? { _meta: { bill_cycle: billCycle } } : {}),
     };
     return merged;
   } catch (err) {
@@ -419,9 +421,10 @@ async function createBillCollectionSummaryHandler(req, reply) {
 async function createBillCollectionSummaryPdfHandler(req, reply) {
   try {
     const body = req.body || {};
-    const merged = await buildBillCollectionSummaryResponse(body);
+    const merged = await buildBillCollectionSummaryResponse(body, { includeMeta: true });
     const pdf = await createBillCollectionSummaryPdf({
       data: merged?.data || {},
+      billCycle: Number(merged?._meta?.bill_cycle || 0),
       department:
         body?.departmentId ||
         body?.department_id ||

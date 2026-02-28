@@ -170,22 +170,9 @@ async function createBillCollectionSummaryHandler(req, reply) {
       totalConsumersFromConnection - billedConsumersCount,
       0
     );
-    const totalBillsGenerated = Number(
-      billingSummary?.data?.total_bill_generated_count || 0
-    );
-    const totalGeneratedAmount = Number(
-      billingSummary?.data?.total_bill_generated_value || 0
-    );
-    const totalCollectedAmount = Number(
-      billingSummary?.data?.total_bill_collected || 0
-    );
-    const totalPendingAmount = Number(
-      billingSummary?.data?.total_bill_remaining || 0
-    );
     const billMonths = Array.isArray(billingSummary?.data?.bill_months)
       ? billingSummary.data.bill_months
       : [];
-    const billMonthCount = Number(billingSummary?.data?.bill_month_count || 0);
     const divisionWise = Array.isArray(billingSummary?.data?.division_wise)
       ? billingSummary.data.division_wise
       : [];
@@ -242,12 +229,9 @@ async function createBillCollectionSummaryHandler(req, reply) {
             division_id: rowDivisionId,
             division_name: rowDivisionName || String(billRow?.division_name || ""),
             total_customers: divisionCustomerCount,
-            total_bills_generated: Number(billRow?.total_bill_generated_count || 0),
             total_billed_customers: billedCustomers,
             pending_bill_generation_count: Math.max(divisionCustomerCount - billedCustomers, 0),
-            total_generated_amount: Number(billRow?.total_bill_generated_value || 0),
-            total_collected_amount: Number(billRow?.total_bill_collected || 0),
-            total_pending_amount: Number(billRow?.total_bill_remaining || 0),
+            bill_months: billMonths,
           };
         })
     );
@@ -302,12 +286,9 @@ async function createBillCollectionSummaryHandler(req, reply) {
               billRow?.collection_center_name || row?.collection_center_name || ""
             ).trim(),
             total_customers: customerCount,
-            total_bills_generated: Number(billRow?.total_bill_generated_count || 0),
             total_billed_customers: billedCustomers,
             pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
-            total_generated_amount: Number(billRow?.total_bill_generated_value || 0),
-            total_collected_amount: Number(billRow?.total_bill_collected || 0),
-            total_pending_amount: Number(billRow?.total_bill_remaining || 0),
+            bill_months: billMonths,
           };
         })
     );
@@ -344,12 +325,9 @@ async function createBillCollectionSummaryHandler(req, reply) {
             scheme_id: rowSchemeId,
             scheme_name: String(billRow?.scheme_name || row?.scheme_name || "").trim(),
             total_customers: customerCount,
-            total_bills_generated: Number(billRow?.total_bill_generated_count || 0),
             total_billed_customers: billedCustomers,
             pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
-            total_generated_amount: Number(billRow?.total_bill_generated_value || 0),
-            total_collected_amount: Number(billRow?.total_bill_collected || 0),
-            total_pending_amount: Number(billRow?.total_bill_remaining || 0),
+            bill_months: billMonths,
           };
         })
     );
@@ -360,14 +338,8 @@ async function createBillCollectionSummaryHandler(req, reply) {
       filters: billingSummary?.filters || {},
       data: {
         total_customers: totalConsumersFromConnection,
-        total_bills_generated: totalBillsGenerated,
         total_billed_customers: billedConsumersCount,
         pending_bill_generation_count: pendingBillNotGeneratedCount,
-        total_generated_amount: totalGeneratedAmount,
-        total_collected_amount: totalCollectedAmount,
-        total_pending_amount: totalPendingAmount,
-        bill_months: billMonths,
-        bill_month_count: billMonthCount,
         ...(groupByDivision ? { division_wise_details: divisionWiseDetails } : {}),
         ...(groupByCollectionCenter
           ? { collection_center_wise_details: collectionCenterWiseDetails }

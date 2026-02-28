@@ -62,6 +62,10 @@ function sumConnectionRows(rows = []) {
   }, 0);
 }
 
+function getGeneratedBillCount(row = {}) {
+  return Number(row?.total_bill_generated_count || 0);
+}
+
 async function fetchDepartmentDivisions(departmentId = "") {
   const dep = String(departmentId || "").trim();
   if (!dep) return [];
@@ -184,153 +188,194 @@ async function createBillCollectionSummaryHandler(req, reply) {
     const schemeWise = Array.isArray(billingSummary?.data?.scheme_wise)
       ? billingSummary.data.scheme_wise
       : [];
-    const hasDivisionFilter = Boolean(division_id);
+    let divisionWiseDetails = [];
+    if (groupByDivision) {
+      const hasDivisionFilter = Boolean(division_id);
+      const billingDivisionMap = new Map(
+        divisionWise.map((row) => [String(row?.division_id || "").trim(), row])
+      );
 
-    const billingDivisionMap = new Map(
-      divisionWise.map((row) => [String(row?.division_id || "").trim(), row])
-    );
-
-    let targetDivisions = [];
-    if (hasDivisionFilter) {
-      targetDivisions = [{ _id: division_id, name: body.division || "" }];
-    } else {
-      try {
-        const allDivisions = await fetchDepartmentDivisions(department_id);
-        targetDivisions = allDivisions.map((d) => ({
-          _id: String(d?.id || d?._id || "").trim(),
-          name: String(d?.name || "").trim(),
-        }));
-      } catch {
-        // Fallback to billed divisions only if admin division list is unavailable.
-        targetDivisions = divisionWise.map((row) => ({
-          _id: String(row?.division_id || "").trim(),
-          name: String(row?.division_name || "").trim(),
-        }));
+      let targetDivisions = [];
+      if (hasDivisionFilter) {
+        targetDivisions = [{ _id: division_id, name: body.division || "" }];
+      } else {
+        try {
+          const allDivisions = await fetchDepartmentDivisions(department_id);
+          targetDivisions = allDivisions.map((d) => ({
+            _id: String(d?.id || d?._id || "").trim(),
+            name: String(d?.name || "").trim(),
+          }));
+        } catch {
+          // Fallback to billed divisions only if admin division list is unavailable.
+          targetDivisions = divisionWise.map((row) => ({
+            _id: String(row?.division_id || "").trim(),
+            name: String(row?.division_name || "").trim(),
+          }));
+        }
       }
+
+      divisionWiseDetails = await Promise.all(
+        targetDivisions
+          .filter((d) => d?._id)
+          .sort((a, b) => {
+            const aCount = getGeneratedBillCount(
+              billingDivisionMap.get(String(a?._id || "").trim()) || {}
+            );
+            const bCount = getGeneratedBillCount(
+              billingDivisionMap.get(String(b?._id || "").trim()) || {}
+            );
+            if (aCount > 0 && bCount <= 0) return -1;
+            if (aCount <= 0 && bCount > 0) return 1;
+            return bCount - aCount;
+          })
+          .map(async (division) => {
+            const rowDivisionId = String(division._id || "").trim();
+            const rowDivisionName = String(division.name || "").trim();
+            const billRow = billingDivisionMap.get(rowDivisionId) || {};
+            const divisionCustomerCount = await resolveCustomerCountForScope({
+              body,
+              department_id,
+              division_id: rowDivisionId,
+              collection_center_id,
+              scheme_id,
+            });
+
+            const billedCustomers = Number(billRow?.billed_consumers_count || 0);
+            return {
+              division_id: rowDivisionId,
+              division_name: rowDivisionName || String(billRow?.division_name || ""),
+              total_customers: divisionCustomerCount,
+              total_billed_customers: billedCustomers,
+              pending_bill_generation_count: Math.max(divisionCustomerCount - billedCustomers, 0),
+              bill_months: billMonths,
+            };
+          })
+      );
     }
 
-    const divisionWiseDetails = await Promise.all(
-      targetDivisions
-        .filter((d) => d?._id)
-        .map(async (division) => {
-          const rowDivisionId = String(division._id || "").trim();
-          const rowDivisionName = String(division.name || "").trim();
-          const billRow = billingDivisionMap.get(rowDivisionId) || {};
-          const divisionCustomerCount = await resolveCustomerCountForScope({
-            body,
-            department_id,
-            division_id: rowDivisionId,
-            collection_center_id,
-            scheme_id,
-          });
-
-          const billedCustomers = Number(billRow?.billed_consumers_count || 0);
-          return {
-            division_id: rowDivisionId,
-            division_name: rowDivisionName || String(billRow?.division_name || ""),
-            total_customers: divisionCustomerCount,
-            total_billed_customers: billedCustomers,
-            pending_bill_generation_count: Math.max(divisionCustomerCount - billedCustomers, 0),
-            bill_months: billMonths,
-          };
-        })
-    );
-
-    const billingCollectionCenterMap = new Map(
-      collectionCenterWise.map((row) => [String(row?.collection_center_id || "").trim(), row])
-    );
-    const centerMasterList = await fetchCollectionCentersByScope({
-      department_id,
-      division_id,
-    });
-    const targetCollectionCenters = centerMasterList.length
-      ? centerMasterList.map((c) => ({
-          collection_center_id: c.id,
-          collection_center_name: c.title,
-        }))
-      : [...collectionCenterWise];
-    if (
-      collection_center_id &&
-      !targetCollectionCenters.some(
-        (c) =>
-          String(c?.collection_center_id || "").trim() ===
-          String(collection_center_id).trim()
-      )
-    ) {
-      targetCollectionCenters.push({
-        collection_center_id: String(collection_center_id).trim(),
-        collection_center_name: String(
-          body.collection_center || body.collectionCenter || ""
-        ).trim(),
+    let collectionCenterWiseDetails = [];
+    if (groupByCollectionCenter) {
+      const billingCollectionCenterMap = new Map(
+        collectionCenterWise.map((row) => [String(row?.collection_center_id || "").trim(), row])
+      );
+      const centerMasterList = await fetchCollectionCentersByScope({
+        department_id,
+        division_id,
       });
+      const targetCollectionCenters = centerMasterList.length
+        ? centerMasterList.map((c) => ({
+            collection_center_id: c.id,
+            collection_center_name: c.title,
+          }))
+        : [...collectionCenterWise];
+      if (
+        collection_center_id &&
+        !targetCollectionCenters.some(
+          (c) =>
+            String(c?.collection_center_id || "").trim() ===
+            String(collection_center_id).trim()
+        )
+      ) {
+        targetCollectionCenters.push({
+          collection_center_id: String(collection_center_id).trim(),
+          collection_center_name: String(
+            body.collection_center || body.collectionCenter || ""
+          ).trim(),
+        });
+      }
+
+      collectionCenterWiseDetails = await Promise.all(
+        targetCollectionCenters
+          .filter((row) => String(row?.collection_center_id || "").trim())
+          .sort((a, b) => {
+            const aCount = getGeneratedBillCount(
+              billingCollectionCenterMap.get(String(a?.collection_center_id || "").trim()) || {}
+            );
+            const bCount = getGeneratedBillCount(
+              billingCollectionCenterMap.get(String(b?.collection_center_id || "").trim()) || {}
+            );
+            if (aCount > 0 && bCount <= 0) return -1;
+            if (aCount <= 0 && bCount > 0) return 1;
+            return bCount - aCount;
+          })
+          .map(async (row) => {
+            const rowCollectionCenterId = String(row?.collection_center_id || "").trim();
+            const billRow =
+              billingCollectionCenterMap.get(rowCollectionCenterId) || row || {};
+            const customerCount = await resolveCustomerCountForScope({
+              body,
+              department_id,
+              division_id,
+              collection_center_id: rowCollectionCenterId,
+              scheme_id,
+            });
+            const billedCustomers = Number(billRow?.billed_consumers_count || 0);
+            return {
+              collection_center_id: rowCollectionCenterId,
+              collection_center_name: String(
+                billRow?.collection_center_name || row?.collection_center_name || ""
+              ).trim(),
+              total_customers: customerCount,
+              total_billed_customers: billedCustomers,
+              pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
+              bill_months: billMonths,
+            };
+          })
+      );
     }
 
-    const collectionCenterWiseDetails = await Promise.all(
-      targetCollectionCenters
-        .filter((row) => String(row?.collection_center_id || "").trim())
-        .map(async (row) => {
-          const rowCollectionCenterId = String(row?.collection_center_id || "").trim();
-          const billRow =
-            billingCollectionCenterMap.get(rowCollectionCenterId) || row || {};
-          const customerCount = await resolveCustomerCountForScope({
-            body,
-            department_id,
-            division_id,
-            collection_center_id: rowCollectionCenterId,
-            scheme_id,
-          });
-          const billedCustomers = Number(billRow?.billed_consumers_count || 0);
-          return {
-            collection_center_id: rowCollectionCenterId,
-            collection_center_name: String(
-              billRow?.collection_center_name || row?.collection_center_name || ""
-            ).trim(),
-            total_customers: customerCount,
-            total_billed_customers: billedCustomers,
-            pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
-            bill_months: billMonths,
-          };
-        })
-    );
+    let schemeWiseDetails = [];
+    if (groupByScheme) {
+      const billingSchemeMap = new Map(
+        schemeWise.map((row) => [String(row?.scheme_id || "").trim(), row])
+      );
+      const schemeMasterList = await fetchSchemesByScope({ department_id, division_id });
+      const targetSchemes = schemeMasterList.length
+        ? schemeMasterList.map((s) => ({ scheme_id: s.id, scheme_name: s.title }))
+        : [...schemeWise];
+      if (scheme_id && !targetSchemes.some((s) => String(s?.scheme_id || "").trim() === String(scheme_id).trim())) {
+        targetSchemes.push({
+          scheme_id: String(scheme_id).trim(),
+          scheme_name: String(body.scheme || "").trim(),
+        });
+      }
 
-    const billingSchemeMap = new Map(
-      schemeWise.map((row) => [String(row?.scheme_id || "").trim(), row])
-    );
-    const schemeMasterList = await fetchSchemesByScope({ department_id, division_id });
-    const targetSchemes = schemeMasterList.length
-      ? schemeMasterList.map((s) => ({ scheme_id: s.id, scheme_name: s.title }))
-      : [...schemeWise];
-    if (scheme_id && !targetSchemes.some((s) => String(s?.scheme_id || "").trim() === String(scheme_id).trim())) {
-      targetSchemes.push({
-        scheme_id: String(scheme_id).trim(),
-        scheme_name: String(body.scheme || "").trim(),
-      });
+      schemeWiseDetails = await Promise.all(
+        targetSchemes
+          .filter((row) => String(row?.scheme_id || "").trim())
+          .sort((a, b) => {
+            const aCount = getGeneratedBillCount(
+              billingSchemeMap.get(String(a?.scheme_id || "").trim()) || {}
+            );
+            const bCount = getGeneratedBillCount(
+              billingSchemeMap.get(String(b?.scheme_id || "").trim()) || {}
+            );
+            if (aCount > 0 && bCount <= 0) return -1;
+            if (aCount <= 0 && bCount > 0) return 1;
+            return bCount - aCount;
+          })
+          .map(async (row) => {
+            const rowSchemeId = String(row?.scheme_id || "").trim();
+            const billRow = billingSchemeMap.get(rowSchemeId) || row || {};
+            const customerCount = await resolveCustomerCountForScope({
+              body,
+              department_id,
+              division_id,
+              collection_center_id,
+              scheme_id: rowSchemeId,
+            });
+            const billedCustomers = Number(billRow?.billed_consumers_count || 0);
+            return {
+              scheme_id: rowSchemeId,
+              scheme_name: String(billRow?.scheme_name || row?.scheme_name || "").trim(),
+              total_customers: customerCount,
+              total_billed_customers: billedCustomers,
+              pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
+              bill_months: billMonths,
+            };
+          })
+      );
     }
-
-    const schemeWiseDetails = await Promise.all(
-      targetSchemes
-        .filter((row) => String(row?.scheme_id || "").trim())
-        .map(async (row) => {
-          const rowSchemeId = String(row?.scheme_id || "").trim();
-          const billRow = billingSchemeMap.get(rowSchemeId) || row || {};
-          const customerCount = await resolveCustomerCountForScope({
-            body,
-            department_id,
-            division_id,
-            collection_center_id,
-            scheme_id: rowSchemeId,
-          });
-          const billedCustomers = Number(billRow?.billed_consumers_count || 0);
-          return {
-            scheme_id: rowSchemeId,
-            scheme_name: String(billRow?.scheme_name || row?.scheme_name || "").trim(),
-            total_customers: customerCount,
-            total_billed_customers: billedCustomers,
-            pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
-            bill_months: billMonths,
-          };
-        })
-    );
 
     const merged = {
       success: Boolean(billingSummary?.success),

@@ -36,6 +36,12 @@ message BillCollectionSummaryRequest {
   string bill_month = 27;
   string billMonth = 28;
   string month = 29;
+  bool group_by_division = 30;
+  bool groupByDivision = 31;
+  bool group_by_collection_center = 32;
+  bool groupByCollectionCenter = 33;
+  bool group_by_scheme = 34;
+  bool groupByScheme = 35;
 }
 
 message BillCollectionSummaryFilters {

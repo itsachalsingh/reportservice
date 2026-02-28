@@ -127,6 +127,20 @@ export async function fetchBillCollectionSummary(input = {}) {
     bill_month: cleanString(input.bill_month || input.billMonth || input.month),
     billMonth: cleanString(input.billMonth),
     month: cleanString(input.month),
+    group_by_division: Boolean(
+      input.group_by_division ?? input.groupByDivision ?? true
+    ),
+    groupByDivision: Boolean(
+      input.groupByDivision ?? input.group_by_division ?? true
+    ),
+    group_by_collection_center: Boolean(
+      input.group_by_collection_center ?? input.groupByCollectionCenter ?? true
+    ),
+    groupByCollectionCenter: Boolean(
+      input.groupByCollectionCenter ?? input.group_by_collection_center ?? true
+    ),
+    group_by_scheme: Boolean(input.group_by_scheme ?? input.groupByScheme ?? true),
+    groupByScheme: Boolean(input.groupByScheme ?? input.group_by_scheme ?? true),
   };
 
   try {

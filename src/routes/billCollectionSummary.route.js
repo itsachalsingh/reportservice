@@ -176,7 +176,9 @@ async function createBillCollectionSummaryHandler(req, reply) {
     );
     const billMonths = Array.isArray(billingSummary?.data?.bill_months)
       ? billingSummary.data.bill_months
-      : [];
+      : Array.isArray(billingSummary?.data?.billMonths)
+        ? billingSummary.data.billMonths
+        : [];
     const divisionWise = Array.isArray(billingSummary?.data?.division_wise)
       ? billingSummary.data.division_wise
       : [];

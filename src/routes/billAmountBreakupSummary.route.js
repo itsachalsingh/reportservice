@@ -3,7 +3,6 @@ import { fetchBillCollectionSummary } from "../utils/grpc/billCollectionSummaryC
 import { getDivisionsByDepartment } from "../utils/grpc/divisionClient.js";
 import { getCollectionCenters } from "../utils/grpc/collectionCenterClient.js";
 import { getSchemes } from "../utils/grpc/schemeClient.js";
-import { cachedJson } from "../utils/cache.js";
 
 const reportBody = {
   type: "object",
@@ -84,22 +83,9 @@ const reportBody = {
   },
 };
 
-const DAY_TTL_SECONDS = 24 * 60 * 60;
-const REPORT_CACHE_TTL_SECONDS = Number(
-  process.env.BILL_AMOUNT_BREAKUP_CACHE_TTL_SECONDS || DAY_TTL_SECONDS
-);
-const MASTER_CACHE_TTL_SECONDS = Number(
-  process.env.BILL_AMOUNT_BREAKUP_MASTER_CACHE_TTL_SECONDS || DAY_TTL_SECONDS
-);
-
 function toNum(value) {
   const n = Number(value || 0);
   return Number.isFinite(n) ? n : 0;
-}
-
-function normalizeTtl(ttl) {
-  const parsed = Number(ttl);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function toPositiveInt(value, fallback) {
@@ -370,28 +356,14 @@ async function fetchSchemesByScope({ department_id = "", division_id = "" }) {
   }
 }
 
-async function fetchMasterRowsCached({ type = "", department_id = "", division_id = "", ttl = 0, log = null }) {
+async function fetchMasterRows({ type = "", department_id = "", division_id = "" }) {
   const dep = cleanString(department_id);
   const div = cleanString(division_id);
-  const keyPayload = { type, department_id: dep, division_id: div };
-  const loader = () => {
-    if (type === "division") return fetchDepartmentDivisions(dep);
-    if (type === "collection_center") {
-      return fetchCollectionCentersByScope({ department_id: dep, division_id: div });
-    }
-    return fetchSchemesByScope({ department_id: dep, division_id: div });
-  };
-
-  if (!ttl) return loader();
-
-  const { value } = await cachedJson({
-    prefix: "report:bill-amount-breakup:master:v2",
-    keyPayload,
-    ttlSeconds: ttl,
-    loader,
-    log,
-  });
-  return Array.isArray(value) ? value : [];
+  if (type === "division") return fetchDepartmentDivisions(dep);
+  if (type === "collection_center") {
+    return fetchCollectionCentersByScope({ department_id: dep, division_id: div });
+  }
+  return fetchSchemesByScope({ department_id: dep, division_id: div });
 }
 
 function mergeWithMasterRows({ type = "", summaryRows = [], masterRows = [] }) {
@@ -433,9 +405,6 @@ async function buildGroupWiseDetails({
   rows = [],
   type = "",
   basePayload = {},
-  scope = "",
-  ttl = 0,
-  log = null,
 }) {
   if (!Array.isArray(rows) || !rows.length) return [];
 
@@ -456,17 +425,7 @@ async function buildGroupWiseDetails({
         payload[identity.camelNameField] = identity.name;
       }
 
-      const summary = ttl
-        ? (
-            await cachedJson({
-              prefix: "report:bill-amount-breakup:group:v2",
-              keyPayload: { payload, scope },
-              ttlSeconds: ttl,
-              loader: () => fetchBillCollectionSummary(payload),
-              log,
-            })
-          ).value
-        : await fetchBillCollectionSummary(payload);
+      const summary = await fetchBillCollectionSummary(payload);
 
       return toBreakupDetailsRow({
         summary,
@@ -515,25 +474,12 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
       groupByScheme: false,
     };
 
-    const ttl = normalizeTtl(REPORT_CACHE_TTL_SECONDS);
-    const masterTtl = normalizeTtl(MASTER_CACHE_TTL_SECONDS);
-    const scope = `${req.user?.id || req.user?._id || ""}:${req.user?.role_id || ""}`;
     const departmentId = cleanString(
       body.department_id || body.departmentId || body.department
     );
     const divisionId = cleanString(body.division_id || body.divisionId || body.division);
 
-    const summary = ttl
-      ? (
-          await cachedJson({
-            prefix: "report:bill-amount-breakup:v3",
-            keyPayload: { payload, scope },
-            ttlSeconds: ttl,
-            loader: () => fetchBillCollectionSummary(payload),
-            log: req.log,
-          })
-        ).value
-      : await fetchBillCollectionSummary(payload);
+    const summary = await fetchBillCollectionSummary(payload);
 
     const divisionRows = groupByDivision
       ? mergeWithMasterRows({
@@ -541,12 +487,10 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
           summaryRows: Array.isArray(summary?.data?.division_wise)
             ? summary.data.division_wise
             : [],
-          masterRows: await fetchMasterRowsCached({
+          masterRows: await fetchMasterRows({
             type: "division",
             department_id: departmentId,
             division_id: divisionId,
-            ttl: masterTtl,
-            log: req.log,
           }),
         })
       : [];
@@ -556,12 +500,10 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
           summaryRows: Array.isArray(summary?.data?.collection_center_wise)
             ? summary.data.collection_center_wise
             : [],
-          masterRows: await fetchMasterRowsCached({
+          masterRows: await fetchMasterRows({
             type: "collection_center",
             department_id: departmentId,
             division_id: divisionId,
-            ttl: masterTtl,
-            log: req.log,
           }),
         })
       : [];
@@ -569,12 +511,10 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
       ? mergeWithMasterRows({
           type: "scheme",
           summaryRows: Array.isArray(summary?.data?.scheme_wise) ? summary.data.scheme_wise : [],
-          masterRows: await fetchMasterRowsCached({
+          masterRows: await fetchMasterRows({
             type: "scheme",
             department_id: departmentId,
             division_id: divisionId,
-            ttl: masterTtl,
-            log: req.log,
           }),
         })
       : [];
@@ -584,9 +524,6 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
           rows: divisionRows,
           type: "division",
           basePayload: totalsOnlyPayload,
-          scope,
-          ttl,
-          log: req.log,
         })
       : [];
     const collectionCenterWiseDetails = groupByCollectionCenter
@@ -594,9 +531,6 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
           rows: collectionCenterRows,
           type: "collection_center",
           basePayload: totalsOnlyPayload,
-          scope,
-          ttl,
-          log: req.log,
         })
       : [];
     const schemeWiseDetails = groupByScheme
@@ -604,9 +538,6 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
           rows: schemeRows,
           type: "scheme",
           basePayload: totalsOnlyPayload,
-          scope,
-          ttl,
-          log: req.log,
         })
       : [];
 

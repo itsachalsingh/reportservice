@@ -127,6 +127,7 @@ message BillCollectionSummaryData {
   double total_late_fine = 24;
   double total_arrear = 25;
   double total_advance = 26;
+  double total_late_fee_arrear = 51;
   double total_water_charges_paise = 27;
   double total_sewer_charges_paise = 28;
   double total_other_charges_paise = 29;
@@ -138,6 +139,7 @@ message BillCollectionSummaryData {
   double total_late_fine_paise = 35;
   double total_arrear_paise = 36;
   double total_advance_paise = 37;
+  double total_late_fee_arrear_paise = 52;
   double total_bill_generated_value_rounded_rupees = 38;
   double total_bill_collected_rounded_rupees = 39;
   double total_water_charges_rounded_rupees = 40;
@@ -151,6 +153,7 @@ message BillCollectionSummaryData {
   double total_late_fine_rounded_rupees = 48;
   double total_arrear_rounded_rupees = 49;
   double total_advance_rounded_rupees = 50;
+  double total_late_fee_arrear_rounded_rupees = 53;
 }
 
 message BillCollectionSummaryResponse {

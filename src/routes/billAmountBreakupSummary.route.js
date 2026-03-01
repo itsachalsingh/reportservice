@@ -135,6 +135,7 @@ function toBreakupResponse(summary = {}) {
     toNum(data?.total_sewer_arrear_rounded_rupees) +
     toNum(data?.total_other_arrear_rounded_rupees) +
     toNum(data?.total_meter_rent_arrear_rounded_rupees) +
+    toNum(data?.total_late_fee_arrear_rounded_rupees) +
     toNum(data?.total_late_fine_rounded_rupees);
 
   return {
@@ -168,7 +169,9 @@ function toBreakupDetailsRow({
     [nameKey]: String(name || "").trim(),
     ...totals,
     total_discount: 0,
-    total_late_fee_arrear_and_fine: totals.total_late_fine,
+    total_late_fee_arrear_and_fine: toNum(
+      summary?.data?.total_late_fee_arrear_rounded_rupees
+    ),
   };
 }
 

@@ -151,6 +151,7 @@ function toBreakupResponse(summary = {}) {
     total_other_arrear: toNum(data?.total_other_arrear_rounded_rupees),
     total_meter_rent_arrear: toNum(data?.total_meter_rent_arrear_rounded_rupees),
     total_late_fine: toNum(data?.total_late_fine_rounded_rupees),
+    total_discount: toNum(data?.total_discount_rounded_rupees),
     total_arrear: toNum(data?.total_arrear_rounded_rupees) || totalArrearFallback,
     total_advance: toNum(data?.total_advance_rounded_rupees),
   };
@@ -168,7 +169,6 @@ function toBreakupDetailsRow({
     [idKey]: String(id || "").trim(),
     [nameKey]: String(name || "").trim(),
     ...totals,
-    total_discount: 0,
     total_late_fee_arrear_and_fine: toNum(
       summary?.data?.total_late_fee_arrear_rounded_rupees
     ),

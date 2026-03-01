@@ -120,6 +120,14 @@ function cleanString(value) {
   return String(value).trim();
 }
 
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    const cleaned = cleanString(value);
+    if (cleaned) return cleaned;
+  }
+  return "";
+}
+
 function toBreakupResponse(summary = {}) {
   const data = summary?.data || {};
   const totalArrearFallback =
@@ -301,8 +309,8 @@ async function fetchDepartmentDivisions(departmentId = "") {
     });
     const divisions = Array.isArray(response?.divisions) ? response.divisions : [];
     return divisions.map((d) => ({
-      division_id: cleanString(d?.id),
-      division_name: cleanString(d?.title),
+      division_id: firstNonEmpty(d?.id, d?._id, d?.division_id),
+      division_name: firstNonEmpty(d?.name, d?.title, d?.division_name),
     }));
   } catch {
     return [];
@@ -322,8 +330,16 @@ async function fetchCollectionCentersByScope({ department_id = "", division_id =
     });
     const rows = Array.isArray(out?.collectionCenters) ? out.collectionCenters : [];
     return rows.map((c) => ({
-      collection_center_id: cleanString(c?.id),
-      collection_center_name: cleanString(c?.title),
+      collection_center_id: firstNonEmpty(
+        c?.id,
+        c?._id,
+        c?.collection_center_id
+      ),
+      collection_center_name: firstNonEmpty(
+        c?.title,
+        c?.name,
+        c?.collection_center_name
+      ),
     }));
   } catch {
     return [];
@@ -343,8 +359,8 @@ async function fetchSchemesByScope({ department_id = "", division_id = "" }) {
     });
     const rows = Array.isArray(out?.schemes) ? out.schemes : [];
     return rows.map((s) => ({
-      scheme_id: cleanString(s?.id),
-      scheme_name: cleanString(s?.title),
+      scheme_id: firstNonEmpty(s?.id, s?._id, s?.scheme_id),
+      scheme_name: firstNonEmpty(s?.title, s?.name, s?.scheme_name),
     }));
   } catch {
     return [];

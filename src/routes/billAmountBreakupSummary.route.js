@@ -382,7 +382,7 @@ async function fetchMasterRowsCached({ type = "", department_id = "", division_i
   if (!ttl) return loader();
 
   const { value } = await cachedJson({
-    prefix: "report:bill-amount-breakup:master:v1",
+    prefix: "report:bill-amount-breakup:master:v2",
     keyPayload,
     ttlSeconds: ttl,
     loader,
@@ -456,7 +456,7 @@ async function buildGroupWiseDetails({
       const summary = ttl
         ? (
             await cachedJson({
-              prefix: "report:bill-amount-breakup:group:v1",
+              prefix: "report:bill-amount-breakup:group:v2",
               keyPayload: { payload, scope },
               ttlSeconds: ttl,
               loader: () => fetchBillCollectionSummary(payload),

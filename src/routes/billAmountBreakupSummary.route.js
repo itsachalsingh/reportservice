@@ -108,7 +108,7 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
     const summary = ttl
       ? (
           await cachedJson({
-            prefix: "report:bill-amount-breakup:v1",
+            prefix: "report:bill-amount-breakup:v2",
             keyPayload: { payload, scope },
             ttlSeconds: ttl,
             loader: () => fetchBillCollectionSummary(payload),

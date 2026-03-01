@@ -104,7 +104,7 @@ async function fetchDepartmentDivisionsCached(departmentId = "", log = null) {
   if (!ttl) return fetchDepartmentDivisions(dep);
 
   const { value } = await cachedJson({
-    prefix: "report:bcs:master:divisions:v1",
+    prefix: "report:bcs:master:divisions:v2",
     keyPayload: { department_id: dep },
     ttlSeconds: ttl,
     loader: () => fetchDepartmentDivisions(dep),
@@ -135,7 +135,7 @@ async function resolveCustomerCountForScope({
     const conn = ttl
       ? (
           await cachedJson({
-            prefix: "report:bcs:conn-count:v1",
+            prefix: "report:bcs:conn-count:v2",
             keyPayload: requestPayload,
             ttlSeconds: ttl,
             loader: () => getConnectionCountSummary(requestPayload),
@@ -178,7 +178,7 @@ async function fetchSchemesByScopeCached(
   if (!ttl) return fetchSchemesByScope({ department_id: dep, division_id: div });
 
   const { value } = await cachedJson({
-    prefix: "report:bcs:master:schemes:v1",
+    prefix: "report:bcs:master:schemes:v2",
     keyPayload: { department_id: dep, division_id: div },
     ttlSeconds: ttl,
     loader: () => fetchSchemesByScope({ department_id: dep, division_id: div }),
@@ -220,7 +220,7 @@ async function fetchCollectionCentersByScopeCached(
   }
 
   const { value } = await cachedJson({
-    prefix: "report:bcs:master:centers:v1",
+    prefix: "report:bcs:master:centers:v2",
     keyPayload: { department_id: dep, division_id: div },
     ttlSeconds: ttl,
     loader: () =>
@@ -246,7 +246,7 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
 
   if (!options?.skipResponseCache && responseTtl > 0) {
     const { value } = await cachedJson({
-      prefix: "report:bcs:response:v1",
+      prefix: "report:bcs:response:v2",
       keyPayload: {
         body,
         includeMeta: Boolean(options?.includeMeta),
@@ -276,7 +276,7 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
 
     const [billingSummary, connectionSummary] = await Promise.all([
       cachedJson({
-        prefix: "report:bcs:billing-summary:v1",
+        prefix: "report:bcs:billing-summary:v2",
         keyPayload: body,
         ttlSeconds: normalizeTtl(RESPONSE_CACHE_TTL_SECONDS),
         loader: () => fetchBillCollectionSummary(body),
@@ -284,7 +284,7 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
       }).then((r) => r.value),
       normalizeTtl(COUNT_CACHE_TTL_SECONDS)
         ? cachedJson({
-            prefix: "report:bcs:conn-count:v1",
+            prefix: "report:bcs:conn-count:v2",
             keyPayload: rootConnectionPayload,
             ttlSeconds: normalizeTtl(COUNT_CACHE_TTL_SECONDS),
             loader: () => getConnectionCountSummary(rootConnectionPayload),

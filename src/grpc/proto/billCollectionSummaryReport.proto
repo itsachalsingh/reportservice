@@ -116,6 +116,41 @@ message BillCollectionSummaryData {
   repeated BillCollectionDivisionSummaryRow division_wise = 13;
   repeated BillCollectionCenterSummaryRow collection_center_wise = 14;
   repeated BillCollectionSchemeSummaryRow scheme_wise = 15;
+  double total_water_charges = 16;
+  double total_sewer_charges = 17;
+  double total_other_charges = 18;
+  double total_meter_rent = 19;
+  double total_water_arrear = 20;
+  double total_sewer_arrear = 21;
+  double total_other_arrear = 22;
+  double total_meter_rent_arrear = 23;
+  double total_late_fine = 24;
+  double total_arrear = 25;
+  double total_advance = 26;
+  double total_water_charges_paise = 27;
+  double total_sewer_charges_paise = 28;
+  double total_other_charges_paise = 29;
+  double total_meter_rent_paise = 30;
+  double total_water_arrear_paise = 31;
+  double total_sewer_arrear_paise = 32;
+  double total_other_arrear_paise = 33;
+  double total_meter_rent_arrear_paise = 34;
+  double total_late_fine_paise = 35;
+  double total_arrear_paise = 36;
+  double total_advance_paise = 37;
+  double total_bill_generated_value_rounded_rupees = 38;
+  double total_bill_collected_rounded_rupees = 39;
+  double total_water_charges_rounded_rupees = 40;
+  double total_sewer_charges_rounded_rupees = 41;
+  double total_other_charges_rounded_rupees = 42;
+  double total_meter_rent_rounded_rupees = 43;
+  double total_water_arrear_rounded_rupees = 44;
+  double total_sewer_arrear_rounded_rupees = 45;
+  double total_other_arrear_rounded_rupees = 46;
+  double total_meter_rent_arrear_rounded_rupees = 47;
+  double total_late_fine_rounded_rupees = 48;
+  double total_arrear_rounded_rupees = 49;
+  double total_advance_rounded_rupees = 50;
 }
 
 message BillCollectionSummaryResponse {

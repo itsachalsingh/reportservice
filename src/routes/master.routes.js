@@ -3,6 +3,7 @@ import ConsumerConnectionCategoryReport from "../routes/consumerConnectionCatego
 import ConsumerConnectionCountReport from "../routes/consumerConnectionCount.route.js"
 import DivisionLegacyArrearReport from "../routes/divisionArrearLegacy.route.js"
 import BillCollectionSummaryReport from "../routes/billCollectionSummary.route.js"
+import BillAmountBreakupSummaryReport from "../routes/billAmountBreakupSummary.route.js"
 
 async function masterRoutes(fastify, opts) {
 
@@ -27,6 +28,7 @@ async function masterRoutes(fastify, opts) {
   await fastify.register(ConsumerConnectionCountReport, { authRoute });
   await fastify.register(DivisionLegacyArrearReport, { authRoute });
   await fastify.register(BillCollectionSummaryReport, { authRoute });
+  await fastify.register(BillAmountBreakupSummaryReport, { authRoute });
 }
 
 export default masterRoutes;

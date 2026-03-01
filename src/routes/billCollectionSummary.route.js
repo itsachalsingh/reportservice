@@ -5,6 +5,7 @@ import { getDivisionsByDepartment } from "../utils/grpc/divisionClient.js";
 import { getSchemes } from "../utils/grpc/schemeClient.js";
 import { getCollectionCenters } from "../utils/grpc/collectionCenterClient.js";
 import { createBillCollectionSummaryPdf } from "../utils/billCollectionSummaryPdf.js";
+import { cachedJson } from "../utils/cache.js";
 
 const reportBody = {
   type: "object",
@@ -54,6 +55,24 @@ const reportBody = {
   },
 };
 
+const DAY_TTL_SECONDS = 24 * 60 * 60;
+const RESPONSE_CACHE_TTL_SECONDS = Number(
+  process.env.BILL_COLLECTION_RESPONSE_CACHE_TTL_SECONDS ||
+    process.env.BILL_COLLECTION_REPORT_CACHE_TTL_SECONDS ||
+    DAY_TTL_SECONDS
+);
+const MASTER_CACHE_TTL_SECONDS = Number(
+  process.env.BILL_COLLECTION_MASTER_CACHE_TTL_SECONDS || DAY_TTL_SECONDS
+);
+const COUNT_CACHE_TTL_SECONDS = Number(
+  process.env.BILL_COLLECTION_COUNT_CACHE_TTL_SECONDS || DAY_TTL_SECONDS
+);
+
+function normalizeTtl(ttl) {
+  const parsed = Number(ttl);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function sumConnectionRows(rows = []) {
   return rows.reduce((acc, item) => {
     const active = Number(item?.active || 0);
@@ -78,15 +97,32 @@ async function fetchDepartmentDivisions(departmentId = "") {
   return Array.isArray(divisions) ? divisions : [];
 }
 
+async function fetchDepartmentDivisionsCached(departmentId = "", log = null) {
+  const dep = String(departmentId || "").trim();
+  if (!dep) return [];
+  const ttl = normalizeTtl(MASTER_CACHE_TTL_SECONDS);
+  if (!ttl) return fetchDepartmentDivisions(dep);
+
+  const { value } = await cachedJson({
+    prefix: "report:bcs:master:divisions:v1",
+    keyPayload: { department_id: dep },
+    ttlSeconds: ttl,
+    loader: () => fetchDepartmentDivisions(dep),
+    log,
+  });
+  return Array.isArray(value) ? value : [];
+}
+
 async function resolveCustomerCountForScope({
   body,
   department_id,
   division_id = "",
   collection_center_id = "",
   scheme_id = "",
+  log = null,
 }) {
   try {
-    const conn = await getConnectionCountSummary({
+    const requestPayload = {
       department_id,
       division_id,
       collection_center_id,
@@ -94,7 +130,19 @@ async function resolveCustomerCountForScope({
       revenue_unit_id: body.revenue_unit_id || body.revenueUnitId || "",
       ledger_id: body.ledger_id || body.ledgerId || "",
       lane_id: body.lane_id || body.laneId || "",
-    });
+    };
+    const ttl = normalizeTtl(COUNT_CACHE_TTL_SECONDS);
+    const conn = ttl
+      ? (
+          await cachedJson({
+            prefix: "report:bcs:conn-count:v1",
+            keyPayload: requestPayload,
+            ttlSeconds: ttl,
+            loader: () => getConnectionCountSummary(requestPayload),
+            log,
+          })
+        ).value
+      : await getConnectionCountSummary(requestPayload);
     const rows = Array.isArray(conn?.rows) ? conn.rows : [];
     return sumConnectionRows(rows);
   } catch {
@@ -120,6 +168,25 @@ async function fetchSchemesByScope({ department_id = "", division_id = "" }) {
   }
 }
 
+async function fetchSchemesByScopeCached(
+  { department_id = "", division_id = "" },
+  log = null
+) {
+  const dep = String(department_id || "").trim();
+  const div = String(division_id || "").trim();
+  const ttl = normalizeTtl(MASTER_CACHE_TTL_SECONDS);
+  if (!ttl) return fetchSchemesByScope({ department_id: dep, division_id: div });
+
+  const { value } = await cachedJson({
+    prefix: "report:bcs:master:schemes:v1",
+    keyPayload: { department_id: dep, division_id: div },
+    ttlSeconds: ttl,
+    loader: () => fetchSchemesByScope({ department_id: dep, division_id: div }),
+    log,
+  });
+  return Array.isArray(value) ? value : [];
+}
+
 async function fetchCollectionCentersByScope({
   department_id = "",
   division_id = "",
@@ -141,6 +208,28 @@ async function fetchCollectionCentersByScope({
   }
 }
 
+async function fetchCollectionCentersByScopeCached(
+  { department_id = "", division_id = "" },
+  log = null
+) {
+  const dep = String(department_id || "").trim();
+  const div = String(division_id || "").trim();
+  const ttl = normalizeTtl(MASTER_CACHE_TTL_SECONDS);
+  if (!ttl) {
+    return fetchCollectionCentersByScope({ department_id: dep, division_id: div });
+  }
+
+  const { value } = await cachedJson({
+    prefix: "report:bcs:master:centers:v1",
+    keyPayload: { department_id: dep, division_id: div },
+    ttlSeconds: ttl,
+    loader: () =>
+      fetchCollectionCentersByScope({ department_id: dep, division_id: div }),
+    log,
+  });
+  return Array.isArray(value) ? value : [];
+}
+
 async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
   const department_id = body.department_id || body.departmentId || body.department || "";
   const division_id = body.division_id || body.divisionId || body.division || "";
@@ -152,19 +241,56 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
   const groupByCollectionCenter =
     body.group_by_collection_center ?? body.groupByCollectionCenter ?? true;
   const groupByScheme = body.group_by_scheme ?? body.groupByScheme ?? true;
+  const log = options?.log || null;
+  const responseTtl = normalizeTtl(RESPONSE_CACHE_TTL_SECONDS);
+
+  if (!options?.skipResponseCache && responseTtl > 0) {
+    const { value } = await cachedJson({
+      prefix: "report:bcs:response:v1",
+      keyPayload: {
+        body,
+        includeMeta: Boolean(options?.includeMeta),
+        cacheScope: String(options?.cacheScope || "").trim(),
+      },
+      ttlSeconds: responseTtl,
+      loader: () =>
+        buildBillCollectionSummaryResponse(body, {
+          ...options,
+          skipResponseCache: true,
+        }),
+      log,
+    });
+    return value;
+  }
 
   try {
+    const rootConnectionPayload = {
+      department_id,
+      division_id,
+      collection_center_id,
+      scheme_id,
+      revenue_unit_id: body.revenue_unit_id || body.revenueUnitId || "",
+      ledger_id: body.ledger_id || body.ledgerId || "",
+      lane_id: body.lane_id || body.laneId || "",
+    };
+
     const [billingSummary, connectionSummary] = await Promise.all([
-      fetchBillCollectionSummary(body),
-      getConnectionCountSummary({
-        department_id,
-        division_id,
-        collection_center_id,
-        scheme_id,
-        revenue_unit_id: body.revenue_unit_id || body.revenueUnitId || "",
-        ledger_id: body.ledger_id || body.ledgerId || "",
-        lane_id: body.lane_id || body.laneId || "",
-      }),
+      cachedJson({
+        prefix: "report:bcs:billing-summary:v1",
+        keyPayload: body,
+        ttlSeconds: normalizeTtl(RESPONSE_CACHE_TTL_SECONDS),
+        loader: () => fetchBillCollectionSummary(body),
+        log,
+      }).then((r) => r.value),
+      normalizeTtl(COUNT_CACHE_TTL_SECONDS)
+        ? cachedJson({
+            prefix: "report:bcs:conn-count:v1",
+            keyPayload: rootConnectionPayload,
+            ttlSeconds: normalizeTtl(COUNT_CACHE_TTL_SECONDS),
+            loader: () => getConnectionCountSummary(rootConnectionPayload),
+            log,
+          }).then((r) => r.value)
+        : getConnectionCountSummary(rootConnectionPayload),
     ]);
 
     const connectionRows = Array.isArray(connectionSummary?.rows) ? connectionSummary.rows : [];
@@ -198,7 +324,10 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
         targetDivisions = [{ _id: division_id, name: body.division || "" }];
       } else {
         try {
-          const allDivisions = await fetchDepartmentDivisions(department_id);
+          const allDivisions = await fetchDepartmentDivisionsCached(
+            department_id,
+            log
+          );
           targetDivisions = allDivisions.map((d) => ({
             _id: String(d?.id || d?._id || "").trim(),
             name: String(d?.name || "").trim(),
@@ -236,6 +365,7 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
               division_id: rowDivisionId,
               collection_center_id,
               scheme_id,
+              log,
             });
 
             const billedCustomers = Number(billRow?.billed_consumers_count || 0);
@@ -258,10 +388,13 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
       const billingCollectionCenterMap = new Map(
         collectionCenterWise.map((row) => [String(row?.collection_center_id || "").trim(), row])
       );
-      const centerMasterList = await fetchCollectionCentersByScope({
-        department_id,
-        division_id,
-      });
+      const centerMasterList = await fetchCollectionCentersByScopeCached(
+        {
+          department_id,
+          division_id,
+        },
+        log
+      );
       const targetCollectionCenters = centerMasterList.length
         ? centerMasterList.map((c) => ({
             collection_center_id: c.id,
@@ -308,6 +441,7 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
               division_id,
               collection_center_id: rowCollectionCenterId,
               scheme_id,
+              log,
             });
             const billedCustomers = Number(billRow?.billed_consumers_count || 0);
             return {
@@ -331,7 +465,10 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
       const billingSchemeMap = new Map(
         schemeWise.map((row) => [String(row?.scheme_id || "").trim(), row])
       );
-      const schemeMasterList = await fetchSchemesByScope({ department_id, division_id });
+      const schemeMasterList = await fetchSchemesByScopeCached(
+        { department_id, division_id },
+        log
+      );
       const targetSchemes = schemeMasterList.length
         ? schemeMasterList.map((s) => ({ scheme_id: s.id, scheme_name: s.title }))
         : [...schemeWise];
@@ -365,6 +502,7 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
               division_id,
               collection_center_id,
               scheme_id: rowSchemeId,
+              log,
             });
             const billedCustomers = Number(billRow?.billed_consumers_count || 0);
             return {
@@ -406,7 +544,10 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
 
 async function createBillCollectionSummaryHandler(req, reply) {
   try {
-    const merged = await buildBillCollectionSummaryResponse(req.body || {});
+    const merged = await buildBillCollectionSummaryResponse(req.body || {}, {
+      cacheScope: `${req.user?.id || req.user?._id || ""}:${req.user?.role_id || ""}`,
+      log: req.log,
+    });
     return reply.send({ ok: true, data: merged });
   } catch (err) {
     req.log.error({ err }, "bill-collection-summary-report failed");
@@ -421,7 +562,11 @@ async function createBillCollectionSummaryHandler(req, reply) {
 async function createBillCollectionSummaryPdfHandler(req, reply) {
   try {
     const body = req.body || {};
-    const merged = await buildBillCollectionSummaryResponse(body, { includeMeta: true });
+    const merged = await buildBillCollectionSummaryResponse(body, {
+      includeMeta: true,
+      cacheScope: `${req.user?.id || req.user?._id || ""}:${req.user?.role_id || ""}`,
+      log: req.log,
+    });
     const pdf = await createBillCollectionSummaryPdf({
       data: merged?.data || {},
       billCycle: Number(merged?._meta?.bill_cycle || 0),

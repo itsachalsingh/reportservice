@@ -1,5 +1,8 @@
 import fp from "fastify-plugin";
 import { fetchBillCollectionSummary } from "../utils/grpc/billCollectionSummaryClient.js";
+import { getDivisionsByDepartment } from "../utils/grpc/divisionClient.js";
+import { getCollectionCenters } from "../utils/grpc/collectionCenterClient.js";
+import { getSchemes } from "../utils/grpc/schemeClient.js";
 import { cachedJson } from "../utils/cache.js";
 
 const reportBody = {
@@ -85,6 +88,9 @@ const DAY_TTL_SECONDS = 24 * 60 * 60;
 const REPORT_CACHE_TTL_SECONDS = Number(
   process.env.BILL_AMOUNT_BREAKUP_CACHE_TTL_SECONDS || DAY_TTL_SECONDS
 );
+const MASTER_CACHE_TTL_SECONDS = Number(
+  process.env.BILL_AMOUNT_BREAKUP_MASTER_CACHE_TTL_SECONDS || DAY_TTL_SECONDS
+);
 
 function toNum(value) {
   const n = Number(value || 0);
@@ -107,6 +113,11 @@ function normalizeSortOrder(value, fallback = "desc") {
   const raw = String(value || "").trim().toLowerCase();
   if (raw === "asc" || raw === "desc") return raw;
   return fallback;
+}
+
+function cleanString(value) {
+  if (value == null) return "";
+  return String(value).trim();
 }
 
 function toBreakupResponse(summary = {}) {
@@ -280,6 +291,125 @@ function applySortAndPagination(rows = [], options = {}) {
   };
 }
 
+async function fetchDepartmentDivisions(departmentId = "") {
+  const dep = cleanString(departmentId);
+  if (!dep) return [];
+  try {
+    const response = await getDivisionsByDepartment({
+      department_id: dep,
+      departmentId: dep,
+    });
+    const divisions = Array.isArray(response?.divisions) ? response.divisions : [];
+    return divisions.map((d) => ({
+      division_id: cleanString(d?.id),
+      division_name: cleanString(d?.title),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchCollectionCentersByScope({ department_id = "", division_id = "" }) {
+  const dep = cleanString(department_id);
+  const div = cleanString(division_id);
+  if (!dep && !div) return [];
+  try {
+    const out = await getCollectionCenters({
+      department_id: dep,
+      departmentId: dep,
+      division_id: div,
+      divisionId: div,
+    });
+    const rows = Array.isArray(out?.collectionCenters) ? out.collectionCenters : [];
+    return rows.map((c) => ({
+      collection_center_id: cleanString(c?.id),
+      collection_center_name: cleanString(c?.title),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchSchemesByScope({ department_id = "", division_id = "" }) {
+  const dep = cleanString(department_id);
+  const div = cleanString(division_id);
+  if (!dep && !div) return [];
+  try {
+    const out = await getSchemes({
+      department_id: dep,
+      departmentId: dep,
+      division_id: div,
+      divisionId: div,
+    });
+    const rows = Array.isArray(out?.schemes) ? out.schemes : [];
+    return rows.map((s) => ({
+      scheme_id: cleanString(s?.id),
+      scheme_name: cleanString(s?.title),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function fetchMasterRowsCached({ type = "", department_id = "", division_id = "", ttl = 0, log = null }) {
+  const dep = cleanString(department_id);
+  const div = cleanString(division_id);
+  const keyPayload = { type, department_id: dep, division_id: div };
+  const loader = () => {
+    if (type === "division") return fetchDepartmentDivisions(dep);
+    if (type === "collection_center") {
+      return fetchCollectionCentersByScope({ department_id: dep, division_id: div });
+    }
+    return fetchSchemesByScope({ department_id: dep, division_id: div });
+  };
+
+  if (!ttl) return loader();
+
+  const { value } = await cachedJson({
+    prefix: "report:bill-amount-breakup:master:v1",
+    keyPayload,
+    ttlSeconds: ttl,
+    loader,
+    log,
+  });
+  return Array.isArray(value) ? value : [];
+}
+
+function mergeWithMasterRows({ type = "", summaryRows = [], masterRows = [] }) {
+  const idKey =
+    type === "division"
+      ? "division_id"
+      : type === "collection_center"
+      ? "collection_center_id"
+      : "scheme_id";
+  const nameKey =
+    type === "division"
+      ? "division_name"
+      : type === "collection_center"
+      ? "collection_center_name"
+      : "scheme_name";
+
+  const map = new Map();
+  for (const row of summaryRows || []) {
+    const id = cleanString(row?.[idKey]);
+    if (!id) continue;
+    map.set(id, {
+      [idKey]: id,
+      [nameKey]: cleanString(row?.[nameKey]),
+    });
+  }
+  for (const row of masterRows || []) {
+    const id = cleanString(row?.[idKey]);
+    if (!id) continue;
+    const existing = map.get(id) || {};
+    map.set(id, {
+      [idKey]: id,
+      [nameKey]: cleanString(existing?.[nameKey] || row?.[nameKey]),
+    });
+  }
+  return [...map.values()];
+}
+
 async function buildGroupWiseDetails({
   rows = [],
   type = "",
@@ -367,7 +497,12 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
     };
 
     const ttl = normalizeTtl(REPORT_CACHE_TTL_SECONDS);
+    const masterTtl = normalizeTtl(MASTER_CACHE_TTL_SECONDS);
     const scope = `${req.user?.id || req.user?._id || ""}:${req.user?.role_id || ""}`;
+    const departmentId = cleanString(
+      body.department_id || body.departmentId || body.department
+    );
+    const divisionId = cleanString(body.division_id || body.divisionId || body.division);
 
     const summary = ttl
       ? (
@@ -381,11 +516,53 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
         ).value
       : await fetchBillCollectionSummary(payload);
 
-    const divisionWiseDetails = groupByDivision
-      ? await buildGroupWiseDetails({
-          rows: Array.isArray(summary?.data?.division_wise)
+    const divisionRows = groupByDivision
+      ? mergeWithMasterRows({
+          type: "division",
+          summaryRows: Array.isArray(summary?.data?.division_wise)
             ? summary.data.division_wise
             : [],
+          masterRows: await fetchMasterRowsCached({
+            type: "division",
+            department_id: departmentId,
+            division_id: divisionId,
+            ttl: masterTtl,
+            log: req.log,
+          }),
+        })
+      : [];
+    const collectionCenterRows = groupByCollectionCenter
+      ? mergeWithMasterRows({
+          type: "collection_center",
+          summaryRows: Array.isArray(summary?.data?.collection_center_wise)
+            ? summary.data.collection_center_wise
+            : [],
+          masterRows: await fetchMasterRowsCached({
+            type: "collection_center",
+            department_id: departmentId,
+            division_id: divisionId,
+            ttl: masterTtl,
+            log: req.log,
+          }),
+        })
+      : [];
+    const schemeRows = groupByScheme
+      ? mergeWithMasterRows({
+          type: "scheme",
+          summaryRows: Array.isArray(summary?.data?.scheme_wise) ? summary.data.scheme_wise : [],
+          masterRows: await fetchMasterRowsCached({
+            type: "scheme",
+            department_id: departmentId,
+            division_id: divisionId,
+            ttl: masterTtl,
+            log: req.log,
+          }),
+        })
+      : [];
+
+    const divisionWiseDetails = groupByDivision
+      ? await buildGroupWiseDetails({
+          rows: divisionRows,
           type: "division",
           basePayload: totalsOnlyPayload,
           scope,
@@ -395,9 +572,7 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
       : [];
     const collectionCenterWiseDetails = groupByCollectionCenter
       ? await buildGroupWiseDetails({
-          rows: Array.isArray(summary?.data?.collection_center_wise)
-            ? summary.data.collection_center_wise
-            : [],
+          rows: collectionCenterRows,
           type: "collection_center",
           basePayload: totalsOnlyPayload,
           scope,
@@ -407,7 +582,7 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
       : [];
     const schemeWiseDetails = groupByScheme
       ? await buildGroupWiseDetails({
-          rows: Array.isArray(summary?.data?.scheme_wise) ? summary.data.scheme_wise : [],
+          rows: schemeRows,
           type: "scheme",
           basePayload: totalsOnlyPayload,
           scope,

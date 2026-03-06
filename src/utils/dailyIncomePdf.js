@@ -4,6 +4,23 @@ import path from "path";
 
 const ASSETS_DIR = path.resolve(process.cwd(), "assets");
 const asset = (name) => path.join(ASSETS_DIR, name);
+const fontAsset = (name) => path.join(ASSETS_DIR, "fonts", name);
+
+function registerFonts(doc) {
+  const regular = fontAsset("NotoSansDevanagari-Regular.ttf");
+  const bold = fontAsset("NotoSansDevanagari-Bold.ttf");
+  if (fs.existsSync(regular)) doc.registerFont("Hindi-Regular", regular);
+  if (fs.existsSync(bold)) doc.registerFont("Hindi-Bold", bold);
+}
+
+function fontName(kind = "regular") {
+  const regular = fontAsset("NotoSansDevanagari-Regular.ttf");
+  const bold = fontAsset("NotoSansDevanagari-Bold.ttf");
+  if (kind === "bold") {
+    return fs.existsSync(bold) ? "Hindi-Bold" : "Helvetica-Bold";
+  }
+  return fs.existsSync(regular) ? "Hindi-Regular" : "Helvetica";
+}
 
 function money(value) {
   const amount = Number(value) || 0;
@@ -49,9 +66,9 @@ function drawRow(doc, columns, row, y, { header = false } = {}) {
         rowHeight
       )
       .fill("#e5e7eb");
-    doc.fillColor("#111827").font("Helvetica-Bold").fontSize(8);
+    doc.fillColor("#111827").font(fontName("bold")).fontSize(8);
   } else {
-    doc.fillColor("#111827").font("Helvetica").fontSize(8);
+    doc.fillColor("#111827").font(fontName("regular")).fontSize(8);
   }
 
   for (const col of columns) {
@@ -109,6 +126,7 @@ export async function createDailyIncomePdf({
   const watermarkPath = asset("watermark.png");
   const logoPath = asset("header-logo.png");
   const generatedAt = toDisplayDate(new Date());
+  registerFonts(doc);
 
   function drawHeader() {
     if (fs.existsSync(watermarkPath)) {
@@ -124,7 +142,7 @@ export async function createDailyIncomePdf({
     drawImageSafe(doc, logoPath, doc.page.margins.left, doc.page.margins.top - 4, 30, 30);
 
     doc
-      .font("Helvetica-Bold")
+      .font(fontName("bold"))
       .fontSize(16)
       .fillColor("#111827")
       .text("Daily Collection Report", doc.page.margins.left, doc.page.margins.top - 2, {
@@ -136,7 +154,7 @@ export async function createDailyIncomePdf({
     const toDate = payload?.end_date || "-";
     const type = payload?.type || payload?.types || "all";
     doc
-      .font("Helvetica")
+      .font(fontName("regular"))
       .fontSize(9)
       .fillColor("#111827")
       .text(
@@ -153,7 +171,7 @@ export async function createDailyIncomePdf({
   drawHeader();
 
   let y = doc.page.margins.top + 44;
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#111827");
+  doc.font(fontName("bold")).fontSize(9).fillColor("#111827");
   doc.text(`Total Payment: Rs ${money(summary?.total_collection)}`, doc.page.margins.left, y);
   doc.text(`Cash: Rs ${money(summary?.by_payment_method?.cash?.amount)}`, doc.page.margins.left + 170, y);
   doc.text(`Card: Rs ${money(summary?.by_payment_method?.card?.amount)}`, doc.page.margins.left + 300, y);
@@ -262,7 +280,7 @@ export async function createDailyIncomePdf({
   );
 
   doc
-    .font("Helvetica")
+    .font(fontName("regular"))
     .fontSize(9)
     .fillColor("#111827")
     .text(
@@ -275,4 +293,3 @@ export async function createDailyIncomePdf({
   doc.end();
   return done;
 }
-

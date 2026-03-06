@@ -184,7 +184,7 @@ export async function createBillCollectionSummaryPdf({
     const columns = fitColumnsToPage(doc, [
       { key: "index", width: 36, align: "right" },
       { key: "name", width: 220 },
-      ...(section.showId ? [{ key: "id", width: 140 }] : []),
+      // ...(section.showId ? [{ key: "id", width: 140 }] : []),
       { key: "total_customers", width: 90, align: "right" },
       { key: "total_billed_customers", width: 110, align: "right" },
       { key: "pending_bill_generation_count", width: 130, align: "right" },

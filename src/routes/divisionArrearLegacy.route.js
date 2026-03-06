@@ -54,6 +54,24 @@ function parseBoolean(value) {
   return undefined;
 }
 
+function zeroLegacyRow(base = {}) {
+  return {
+    division_id: cleanString(base?.division_id),
+    division: cleanString(base?.division),
+    collection_center_id: cleanString(base?.collection_center_id),
+    collection_center: cleanString(base?.collection_center),
+    scheme_id: cleanString(base?.scheme_id),
+    scheme: cleanString(base?.scheme),
+    water_arrear: 0,
+    sewer_arrear: 0,
+    meter_rent_arrear: 0,
+    other_arrear: 0,
+    total_arrear: 0,
+    late_fine: 0,
+    advance: 0,
+  };
+}
+
 function cleanString(value) {
   return String(value || "").trim();
 }
@@ -162,6 +180,110 @@ async function enrichGroupingLabels(rows = [], requestBody = {}, filters = {}, g
   });
 }
 
+async function expandRowsWithMasterGrouping(rows = [], requestBody = {}, filters = {}, grouping = {}) {
+  if (!Array.isArray(rows)) return [];
+  if (!rows.length) return rows;
+
+  const byCollectionCenter = Boolean(grouping?.by_collection_center);
+  const byScheme = Boolean(grouping?.by_scheme);
+  if (byCollectionCenter === byScheme) return rows;
+
+  const departmentId =
+    cleanString(requestBody?.department_id) ||
+    cleanString(requestBody?.departmentId) ||
+    cleanString(filters?.department_id);
+  const divisionId =
+    cleanString(requestBody?.division_id) ||
+    cleanString(requestBody?.divisionId) ||
+    cleanString(filters?.division_id);
+
+  if (!departmentId && !divisionId) return rows;
+
+  const firstRow = rows[0] || {};
+  const baseDivisionId = cleanString(divisionId || firstRow?.division_id);
+  const baseDivision = cleanString(firstRow?.division || "");
+
+  if (byCollectionCenter) {
+    const master = await getCollectionCenters({
+      department_id: departmentId,
+      departmentId: departmentId,
+      division_id: divisionId,
+      divisionId: divisionId,
+    }).catch(() => ({}));
+    const centers = Array.isArray(master?.collectionCenters)
+      ? master.collectionCenters
+      : [];
+    if (!centers.length) return rows;
+
+    const byCenter = new Map(
+      rows
+        .map((row) => [cleanString(row?.collection_center_id), row])
+        .filter(([id]) => Boolean(id))
+    );
+
+    const out = [];
+    for (const center of centers) {
+      const centerId = cleanString(center?.id);
+      if (!centerId) continue;
+      const existing = byCenter.get(centerId);
+      if (existing) {
+        out.push({
+          ...existing,
+          collection_center: cleanString(existing?.collection_center) || cleanString(center?.title),
+        });
+      } else {
+        out.push(
+          zeroLegacyRow({
+            division_id: baseDivisionId,
+            division: baseDivision,
+            collection_center_id: centerId,
+            collection_center: cleanString(center?.title),
+          })
+        );
+      }
+    }
+    return out;
+  }
+
+  const master = await getSchemes({
+    department_id: departmentId,
+    departmentId: departmentId,
+    division_id: divisionId,
+    divisionId: divisionId,
+  }).catch(() => ({}));
+  const schemes = Array.isArray(master?.schemes) ? master.schemes : [];
+  if (!schemes.length) return rows;
+
+  const bySchemeMap = new Map(
+    rows
+      .map((row) => [cleanString(row?.scheme_id), row])
+      .filter(([id]) => Boolean(id))
+  );
+
+  const out = [];
+  for (const scheme of schemes) {
+    const schemeId = cleanString(scheme?.id);
+    if (!schemeId) continue;
+    const existing = bySchemeMap.get(schemeId);
+    if (existing) {
+      out.push({
+        ...existing,
+        scheme: cleanString(existing?.scheme) || cleanString(scheme?.title),
+      });
+    } else {
+      out.push(
+        zeroLegacyRow({
+          division_id: baseDivisionId,
+          division: baseDivision,
+          scheme_id: schemeId,
+          scheme: cleanString(scheme?.title),
+        })
+      );
+    }
+  }
+  return out;
+}
+
 function regroupRowsByPreference(rows = [], grouping = {}, requestBody = {}) {
   if (!Array.isArray(rows) || !rows.length) return rows;
 
@@ -174,6 +296,10 @@ function regroupRowsByPreference(rows = [], grouping = {}, requestBody = {}) {
 
   const byCollectionCenter = Boolean(grouping?.by_collection_center);
   const byScheme = Boolean(grouping?.by_scheme);
+  const requestedDivisionId = cleanString(
+    requestBody?.division_id ?? requestBody?.divisionId
+  );
+  const firstDivisionName = cleanString(rows?.[0]?.division);
   const map = new Map();
 
   for (const row of rows) {
@@ -184,8 +310,11 @@ function regroupRowsByPreference(rows = [], grouping = {}, requestBody = {}) {
     const key = keyParts.join("|");
 
     const existing = map.get(key) || {
-      division_id: "",
-      division: byDivisionPreference === false ? "ALL DIVISIONS" : "",
+      division_id: requestedDivisionId || "",
+      division:
+        byDivisionPreference === false
+          ? firstDivisionName || (requestedDivisionId ? "" : "ALL DIVISIONS")
+          : "",
       collection_center_id: byCollectionCenter ? cleanString(row?.collection_center_id) : "",
       collection_center: byCollectionCenter ? cleanString(row?.collection_center) : "",
       scheme_id: byScheme ? cleanString(row?.scheme_id) : "",
@@ -229,8 +358,14 @@ async function createDivisionLegacyArrearReport(req, reply) {
       data?.filters || {},
       data?.grouping || {}
     );
-    const regroupedRows = regroupRowsByPreference(
+    const expandedRows = await expandRowsWithMasterGrouping(
       labeledRows,
+      req.body || {},
+      data?.filters || {},
+      data?.grouping || {}
+    );
+    const regroupedRows = regroupRowsByPreference(
+      expandedRows,
       data?.grouping || {},
       req.body || {}
     );

@@ -53,9 +53,31 @@ function drawImageSafe(doc, imgPath, x, y, width, height) {
   } catch {}
 }
 
+function sanitizeCellText(value) {
+  return String(value ?? "").replace(/\r?\n/g, " ").trim();
+}
+
+function estimateRowHeight(doc, columns, row, { header = false } = {}) {
+  const minHeight = header ? 20 : 22;
+  if (header) return minHeight;
+
+  let height = minHeight;
+  for (const col of columns) {
+    if (!col.wrap) continue;
+    const text = sanitizeCellText(row?.[col.key] ?? "");
+    const measured = doc.heightOfString(text, {
+      width: Math.max(10, col.width - 6),
+      align: col.align || "left",
+      lineGap: 0,
+    });
+    height = Math.max(height, Math.min(46, Math.ceil(measured) + 6));
+  }
+  return height;
+}
+
 function drawRow(doc, columns, row, y, { header = false } = {}) {
   let cursorX = doc.page.margins.left;
-  const rowHeight = 20;
+  const rowHeight = estimateRowHeight(doc, columns, row, { header });
 
   if (header) {
     doc
@@ -72,11 +94,12 @@ function drawRow(doc, columns, row, y, { header = false } = {}) {
   }
 
   for (const col of columns) {
-    const text = String(row[col.key] ?? "");
+    const text = sanitizeCellText(row[col.key] ?? "");
     doc.text(text, cursorX + 3, y, {
       width: col.width - 6,
       align: col.align || "left",
-      lineBreak: false,
+      lineBreak: Boolean(!header && col.wrap),
+      height: rowHeight - 6,
       ellipsis: true,
     });
     doc.moveTo(cursorX, y - 4).lineTo(cursorX, y - 4 + rowHeight).strokeColor("#d1d5db").stroke();
@@ -183,12 +206,12 @@ export async function createDailyIncomePdf({
 
   const rawColumns = [
     { key: "index", width: 35, align: "right" },
-    { key: "consumer", width: 90 },
-    { key: "name", width: 90 },
-    { key: "receipt", width: 85 },
+    { key: "consumer", width: 90, wrap: true },
+    { key: "name", width: 90, wrap: true },
+    { key: "receipt", width: 85, wrap: true },
     { key: "payment_method", width: 70 },
     { key: "payment_type", width: 65 },
-    { key: "transaction_date", width: 120 },
+    { key: "transaction_date", width: 120, wrap: true },
     { key: "water_charges", width: 80, align: "right" },
     { key: "sewer_charges", width: 80, align: "right" },
     { key: "meter_rent", width: 75, align: "right" },
@@ -222,14 +245,7 @@ export async function createDailyIncomePdf({
   const pageBottom = () => doc.page.height - doc.page.margins.bottom - 24;
 
   for (const row of Array.isArray(details) ? details : []) {
-    if (y > pageBottom()) {
-      doc.addPage({ size: "A4", layout: "landscape", margin: 24 });
-      drawHeader();
-      y = doc.page.margins.top + 66;
-      y = drawRow(doc, columns, headerRow, y, { header: true });
-    }
-
-    y = drawRow(doc, columns, {
+    const rowData = {
       index: row?.index || "",
       consumer: row?.consumer_number || row?.application_number || row?.transaction_number || "-",
       name: row?.name || "-",
@@ -245,7 +261,17 @@ export async function createDailyIncomePdf({
       discount: money(row?.discount),
       paid_amount: money(row?.paid_amount ?? row?.amount),
       balance: money(row?.balance),
-    }, y);
+    };
+
+    const nextHeight = estimateRowHeight(doc, columns, rowData, { header: false });
+    if (y + nextHeight > pageBottom()) {
+      doc.addPage({ size: "A4", layout: "landscape", margin: 24 });
+      drawHeader();
+      y = doc.page.margins.top + 66;
+      y = drawRow(doc, columns, headerRow, y, { header: true });
+    }
+
+    y = drawRow(doc, columns, rowData, y);
   }
 
   if (y > pageBottom()) {

@@ -86,6 +86,14 @@ function getGeneratedBillCount(row = {}) {
   return Number(row?.total_bill_generated_count || 0);
 }
 
+function normalizeId(value) {
+  return String(value || "").trim();
+}
+
+function normalizeName(value) {
+  return String(value || "").trim();
+}
+
 async function fetchDepartmentDivisions(departmentId = "") {
   const dep = String(departmentId || "").trim();
   if (!dep) return [];
@@ -385,9 +393,19 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
 
     let collectionCenterWiseDetails = [];
     if (groupByCollectionCenter) {
-      const billingCollectionCenterMap = new Map(
-        collectionCenterWise.map((row) => [String(row?.collection_center_id || "").trim(), row])
-      );
+      const billingCollectionCenterMap = new Map();
+      for (const row of collectionCenterWise) {
+        const id = normalizeId(row?.collection_center_id);
+        if (!id) continue;
+        const existing = billingCollectionCenterMap.get(id) || {};
+        billingCollectionCenterMap.set(id, {
+          ...existing,
+          ...row,
+          collection_center_name: normalizeName(
+            row?.collection_center_name || existing?.collection_center_name
+          ),
+        });
+      }
       const centerMasterList = await fetchCollectionCentersByScopeCached(
         {
           department_id,
@@ -395,12 +413,17 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
         },
         log
       );
-      const targetCollectionCenters = centerMasterList.length
-        ? centerMasterList.map((c) => ({
-            collection_center_id: c.id,
-            collection_center_name: c.title,
-          }))
-        : [...collectionCenterWise];
+      const centerNameById = new Map(
+        centerMasterList
+          .map((c) => [normalizeId(c?.id), normalizeName(c?.title)])
+          .filter(([id]) => Boolean(id))
+      );
+      const targetCollectionCenters = [...billingCollectionCenterMap.keys()].map((id) => ({
+        collection_center_id: id,
+        collection_center_name:
+          centerNameById.get(id) ||
+          normalizeName(billingCollectionCenterMap.get(id)?.collection_center_name),
+      }));
       if (
         collection_center_id &&
         !targetCollectionCenters.some(
@@ -435,6 +458,11 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
             const rowCollectionCenterId = String(row?.collection_center_id || "").trim();
             const billRow =
               billingCollectionCenterMap.get(rowCollectionCenterId) || row || {};
+            const resolvedName =
+              centerNameById.get(rowCollectionCenterId) ||
+              normalizeName(
+                billRow?.collection_center_name || row?.collection_center_name || ""
+              );
             const customerCount = await resolveCustomerCountForScope({
               body,
               department_id,
@@ -446,9 +474,7 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
             const billedCustomers = Number(billRow?.billed_consumers_count || 0);
             return {
               collection_center_id: rowCollectionCenterId,
-              collection_center_name: String(
-                billRow?.collection_center_name || row?.collection_center_name || ""
-              ).trim(),
+              collection_center_name: resolvedName,
               total_customers: customerCount,
               total_billed_customers: billedCustomers,
               pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),
@@ -462,16 +488,30 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
 
     let schemeWiseDetails = [];
     if (groupByScheme) {
-      const billingSchemeMap = new Map(
-        schemeWise.map((row) => [String(row?.scheme_id || "").trim(), row])
-      );
+      const billingSchemeMap = new Map();
+      for (const row of schemeWise) {
+        const id = normalizeId(row?.scheme_id);
+        if (!id) continue;
+        const existing = billingSchemeMap.get(id) || {};
+        billingSchemeMap.set(id, {
+          ...existing,
+          ...row,
+          scheme_name: normalizeName(row?.scheme_name || existing?.scheme_name),
+        });
+      }
       const schemeMasterList = await fetchSchemesByScopeCached(
         { department_id, division_id },
         log
       );
-      const targetSchemes = schemeMasterList.length
-        ? schemeMasterList.map((s) => ({ scheme_id: s.id, scheme_name: s.title }))
-        : [...schemeWise];
+      const schemeNameById = new Map(
+        schemeMasterList
+          .map((s) => [normalizeId(s?.id), normalizeName(s?.title)])
+          .filter(([id]) => Boolean(id))
+      );
+      const targetSchemes = [...billingSchemeMap.keys()].map((id) => ({
+        scheme_id: id,
+        scheme_name: schemeNameById.get(id) || normalizeName(billingSchemeMap.get(id)?.scheme_name),
+      }));
       if (scheme_id && !targetSchemes.some((s) => String(s?.scheme_id || "").trim() === String(scheme_id).trim())) {
         targetSchemes.push({
           scheme_id: String(scheme_id).trim(),
@@ -496,6 +536,9 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
           .map(async (row) => {
             const rowSchemeId = String(row?.scheme_id || "").trim();
             const billRow = billingSchemeMap.get(rowSchemeId) || row || {};
+            const resolvedSchemeName =
+              schemeNameById.get(rowSchemeId) ||
+              normalizeName(billRow?.scheme_name || row?.scheme_name || "");
             const customerCount = await resolveCustomerCountForScope({
               body,
               department_id,
@@ -507,7 +550,7 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
             const billedCustomers = Number(billRow?.billed_consumers_count || 0);
             return {
               scheme_id: rowSchemeId,
-              scheme_name: String(billRow?.scheme_name || row?.scheme_name || "").trim(),
+              scheme_name: resolvedSchemeName,
               total_customers: customerCount,
               total_billed_customers: billedCustomers,
               pending_bill_generation_count: Math.max(customerCount - billedCustomers, 0),

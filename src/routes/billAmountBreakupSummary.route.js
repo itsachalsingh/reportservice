@@ -401,6 +401,34 @@ function mergeWithMasterRows({ type = "", summaryRows = [], masterRows = [] }) {
   return [...map.values()];
 }
 
+function normalizeSchemeRows({ summaryRows = [], masterRows = [] }) {
+  const nameById = new Map(
+    (masterRows || [])
+      .map((row) => ({
+        id: cleanString(row?.scheme_id),
+        name: cleanString(row?.scheme_name),
+      }))
+      .filter((row) => row.id)
+      .map((row) => [row.id, row.name])
+  );
+
+  const deduped = new Map();
+  for (const row of summaryRows || []) {
+    const id = cleanString(row?.scheme_id);
+    if (!id) continue;
+    const incomingName = cleanString(row?.scheme_name);
+    const mappedName = cleanString(nameById.get(id));
+    const finalName = mappedName || incomingName;
+    const existing = deduped.get(id) || {};
+    deduped.set(id, {
+      scheme_id: id,
+      scheme_name: cleanString(existing?.scheme_name || finalName),
+    });
+  }
+
+  return [...deduped.values()];
+}
+
 async function buildGroupWiseDetails({
   rows = [],
   type = "",
@@ -508,9 +536,10 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
         })
       : [];
     const schemeRows = groupByScheme
-      ? mergeWithMasterRows({
-          type: "scheme",
-          summaryRows: Array.isArray(summary?.data?.scheme_wise) ? summary.data.scheme_wise : [],
+      ? normalizeSchemeRows({
+          summaryRows: Array.isArray(summary?.data?.scheme_wise)
+            ? summary.data.scheme_wise
+            : [],
           masterRows: await fetchMasterRows({
             type: "scheme",
             department_id: departmentId,

@@ -28,6 +28,9 @@ const reportBody = {
     groupByCollectionCenter: { type: "boolean" },
     group_by_scheme: { type: "boolean" },
     groupByScheme: { type: "boolean" },
+    by_division: { type: "boolean" },
+    group_by_division: { type: "boolean" },
+    groupByDivision: { type: "boolean" },
   },
 };
 
@@ -39,6 +42,16 @@ function parseFormat(req) {
   if (format === "json") return "json";
   if (accept.includes("application/pdf")) return "pdf";
   return "json";
+}
+
+function parseBoolean(value) {
+  if (typeof value === "boolean") return value;
+  if (value == null) return undefined;
+  const text = String(value).trim().toLowerCase();
+  if (!text) return undefined;
+  if (["true", "1", "yes", "y"].includes(text)) return true;
+  if (["false", "0", "no", "n"].includes(text)) return false;
+  return undefined;
 }
 
 function cleanString(value) {
@@ -149,16 +162,95 @@ async function enrichGroupingLabels(rows = [], requestBody = {}, filters = {}, g
   });
 }
 
+function regroupRowsByPreference(rows = [], grouping = {}, requestBody = {}) {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+
+  const byDivisionPreference = parseBoolean(
+    requestBody?.by_division ??
+      requestBody?.group_by_division ??
+      requestBody?.groupByDivision
+  );
+  if (byDivisionPreference !== false) return rows;
+
+  const byCollectionCenter = Boolean(grouping?.by_collection_center);
+  const byScheme = Boolean(grouping?.by_scheme);
+  const map = new Map();
+
+  for (const row of rows) {
+    const keyParts = [];
+    if (byCollectionCenter) keyParts.push(cleanString(row?.collection_center_id));
+    if (byScheme) keyParts.push(cleanString(row?.scheme_id));
+    if (!keyParts.length) keyParts.push("ALL");
+    const key = keyParts.join("|");
+
+    const existing = map.get(key) || {
+      division_id: "",
+      division: byDivisionPreference === false ? "ALL DIVISIONS" : "",
+      collection_center_id: byCollectionCenter ? cleanString(row?.collection_center_id) : "",
+      collection_center: byCollectionCenter ? cleanString(row?.collection_center) : "",
+      scheme_id: byScheme ? cleanString(row?.scheme_id) : "",
+      scheme: byScheme ? cleanString(row?.scheme) : "",
+      water_arrear: 0,
+      sewer_arrear: 0,
+      meter_rent_arrear: 0,
+      other_arrear: 0,
+      total_arrear: 0,
+      late_fine: 0,
+      advance: 0,
+    };
+
+    existing.water_arrear += Number(row?.water_arrear || 0);
+    existing.sewer_arrear += Number(row?.sewer_arrear || 0);
+    existing.meter_rent_arrear += Number(row?.meter_rent_arrear || 0);
+    existing.other_arrear += Number(row?.other_arrear || 0);
+    existing.total_arrear += Number(row?.total_arrear || 0);
+    existing.late_fine += Number(row?.late_fine || 0);
+    existing.advance += Number(row?.advance || 0);
+
+    if (byCollectionCenter && !existing.collection_center) {
+      existing.collection_center = cleanString(row?.collection_center);
+    }
+    if (byScheme && !existing.scheme) {
+      existing.scheme = cleanString(row?.scheme);
+    }
+
+    map.set(key, existing);
+  }
+
+  return [...map.values()];
+}
+
 async function createDivisionLegacyArrearReport(req, reply) {
   try {
     const data = await fetchLegacyArrearDivisionSummary(req.body || {});
-    const enrichedRows = await enrichGroupingLabels(
+    const labeledRows = await enrichGroupingLabels(
       Array.isArray(data?.rows) ? data.rows : [],
       req.body || {},
       data?.filters || {},
       data?.grouping || {}
     );
-    const out = { ...data, rows: enrichedRows };
+    const regroupedRows = regroupRowsByPreference(
+      labeledRows,
+      data?.grouping || {},
+      req.body || {}
+    );
+    const requestedByDivision = parseBoolean(
+      req.body?.by_division ??
+        req.body?.group_by_division ??
+        req.body?.groupByDivision
+    );
+    const out = {
+      ...data,
+      count: regroupedRows.length,
+      rows: regroupedRows,
+      grouping: {
+        ...(data?.grouping || {}),
+        by_division:
+          requestedByDivision === undefined
+            ? Boolean(data?.grouping?.by_division)
+            : requestedByDivision,
+      },
+    };
 
     const format = parseFormat(req);
     if (format === "json") {
@@ -169,7 +261,7 @@ async function createDivisionLegacyArrearReport(req, reply) {
     }
 
     const pdf = await createLegacyArrearSummaryPdf({
-      rows: enrichedRows,
+      rows: regroupedRows,
       totals: out?.totals || {},
       department:
         req.body?.departmentId ||

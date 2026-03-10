@@ -250,7 +250,7 @@ export async function createDailyIncomePdf({
   for (const row of Array.isArray(details) ? details : []) {
     const rowData = {
       index: row?.index || "",
-      consumer: row?.consumer_number || row?.application_number || row?.transaction_number || "-",
+      consumer: row?.consumer_number || row?.consumer_code || row?.application_number || row?.transaction_number || "-",
       name: row?.name || "-",
       receipt: row?.receipt_number || "-",
       payment_method: row?.payment_method || "-",

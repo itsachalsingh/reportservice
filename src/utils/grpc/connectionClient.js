@@ -73,3 +73,22 @@ export function getConnectionCountSummary(payload = {}) {
     });
   });
 }
+
+export function getConnectionByConsumerCode(consumerCode) {
+  const client = getClient();
+  return new Promise((resolve, reject) => {
+    client.GetConnectionByConsumerCode(
+      { consumer_code: String(consumerCode || "").trim() },
+      (error, response) => {
+        if (error) {
+          const err = new Error(
+            error?.message || "Failed to fetch connection by consumer code"
+          );
+          err.code = error.code;
+          return reject(err);
+        }
+        resolve(response || {});
+      }
+    );
+  });
+}

@@ -37,6 +37,19 @@ function headerValue(value) {
   return v || "-";
 }
 
+function fitColumnsToPage(doc, rawColumns) {
+  const available =
+    doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const total = rawColumns.reduce((sum, col) => sum + col.width, 0);
+  if (total <= available) return rawColumns;
+
+  const scale = available / total;
+  return rawColumns.map((col) => {
+    const minWidth = ["consumer", "name", "receipt"].includes(col.key) ? 70 : 42;
+    return { ...col, width: Math.max(minWidth, Math.floor(col.width * scale)) };
+  });
+}
+
 export async function createDailyIncomePdf({
   payload = {},
   summary = {},
@@ -171,7 +184,7 @@ export async function createDailyIncomePdf({
 
   /* column definition */
 
-  const columns = [
+  const rawColumns = [
     { key: "index", label: "S.No", width: 40 },
 
     { key: "consumer", label: "Consumer", width: 170 },
@@ -204,8 +217,9 @@ export async function createDailyIncomePdf({
 
     { key: "balance", label: "Balance", width: 85 },
   ];
+  const columns = fitColumnsToPage(doc, rawColumns);
 
-  const rowHeight = 24;
+  const rowHeight = 42;
 
   function drawRow(row, header = false) {
     let x = doc.page.margins.left;
@@ -245,6 +259,7 @@ export async function createDailyIncomePdf({
       doc.text(String(row[col.key] ?? ""), x + 3, y, {
         width: col.width - 6,
         align,
+        lineBreak: true,
       });
 
       doc.moveTo(x, y - 3).lineTo(x, y + rowHeight - 3).stroke("#ddd");
@@ -282,7 +297,9 @@ export async function createDailyIncomePdf({
         row.consumer_number ||
         row.consumer_code ||
         "-"
-      }\n(${row.payment_method || ""} / ${row.payment_type || ""})`,
+      }\nMode - (${row.payment_method || "-"} / ${row.payment_type || "-"})\nAddress - ${
+        row.address || row.consumer_address || "-"
+      }`,
 
       name: row.name || "-",
 

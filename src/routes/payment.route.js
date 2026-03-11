@@ -1,9 +1,76 @@
 import fp from "fastify-plugin";
 import { getDailyIncomeReportRPC } from "../utils/rpcClient.js";
 import { createDailyIncomePdf } from "../utils/dailyIncomePdf.js";
+import { getConnectionByConsumerCode } from "../utils/grpc/connectionClient.js";
 
 const paymentModes = ["cash", "card", "online", "upi", "demand draft", "cheque", "all"];
 const transactionTypes = ["form", "bill", "service", "demand", "all"];
+
+function firstText(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const text = String(value).trim();
+    if (!text) continue;
+    return text;
+  }
+  return null;
+}
+
+async function enrichDetailsWithConnectionAddress(details = []) {
+  if (!Array.isArray(details) || !details.length) return details;
+
+  const enriched = details.map((row) => ({ ...row }));
+  const byConsumerCode = new Map();
+
+  for (const row of enriched) {
+    const code = firstText(
+      row?.consumer_number,
+      row?.consumer_code,
+      row?.consumerCode
+    );
+    if (!code) continue;
+    if (!byConsumerCode.has(code)) byConsumerCode.set(code, []);
+    byConsumerCode.get(code).push(row);
+  }
+
+  const codes = Array.from(byConsumerCode.keys());
+  if (!codes.length) return enriched;
+
+  const configured = Number(process.env.PDF_ADDRESS_ENRICH_CONCURRENCY || 8);
+  const concurrency = Math.max(
+    1,
+    Math.min(codes.length, Number.isFinite(configured) ? configured : 8)
+  );
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < codes.length) {
+      const idx = cursor;
+      cursor += 1;
+      const code = codes[idx];
+      const rows = byConsumerCode.get(code) || [];
+      const alreadyPresent = rows.some((r) =>
+        firstText(r?.address, r?.consumer_address)
+      );
+      if (alreadyPresent) continue;
+
+      try {
+        const response = await getConnectionByConsumerCode(code);
+        const address = firstText(response?.connection?.connection_address);
+        if (!address) continue;
+        rows.forEach((row) => {
+          row.address = row.address || address;
+          row.consumer_address = row.consumer_address || address;
+        });
+      } catch {
+        // Best-effort enrichment for PDF; ignore lookup failures.
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return enriched;
+}
 
 const dailyIncomeBody = {
   type: "object",
@@ -109,10 +176,14 @@ async function createDailyIncomePdfHandler(req, reply) {
     }
 
     const reportData = rpc?.data || {};
+    const enrichedDetails = await enrichDetailsWithConnectionAddress(
+      Array.isArray(reportData?.details) ? reportData.details : []
+    );
+
     const pdf = await createDailyIncomePdf({
       payload,
       summary: reportData?.summary || {},
-      details: Array.isArray(reportData?.details) ? reportData.details : [],
+      details: enrichedDetails,
       pagination: reportData?.pagination || {},
     });
 

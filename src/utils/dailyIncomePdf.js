@@ -221,8 +221,13 @@ export async function createDailyIncomePdf({
     { key: "others", width: 65, align: "right" },
     { key: "late_fee", width: 65, align: "right" },
     { key: "discount", width: 65, align: "right" },
+     { key: "arrears", width: 80, align: "right" },
+    { key: "bill_amount", width: 85, align: "right" },
+   
+    
     { key: "paid_amount", width: 80, align: "right" },
     { key: "balance", width: 75, align: "right" },
+    { key: "advance_excess", width: 95, align: "right" },
   ];
   const columns = fitColumnsToPage(doc, rawColumns);
 
@@ -240,6 +245,9 @@ export async function createDailyIncomePdf({
     others: "Other",
     late_fee: "Late Fee",
     discount: "Disc.",
+    bill_amount: "Bill Amt",
+    arrears: "Arrears",
+    advance_excess: "Advance (Excess)",
     paid_amount: "Paid",
     balance: "Balance",
   };
@@ -262,6 +270,9 @@ export async function createDailyIncomePdf({
       others: money(row?.others),
       late_fee: money(row?.late_fee),
       discount: money(row?.discount),
+      bill_amount: money(row?.bill_amount),
+      arrears: money(row?.arrears),
+      advance_excess: money(row?.excess_amount ?? row?.excessAmount ?? row?.advance),
       paid_amount: money(row?.paid_amount ?? row?.amount),
       balance: money(row?.balance),
     };
@@ -301,6 +312,9 @@ export async function createDailyIncomePdf({
       others: "",
       late_fee: "",
       discount: "",
+      bill_amount: "",
+      arrears: "",
+      advance_excess: "",
       paid_amount: money(summary?.total_collection),
       balance: "",
     },

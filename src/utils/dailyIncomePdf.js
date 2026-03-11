@@ -4,6 +4,7 @@ import path from "path";
 
 const ASSETS_DIR = path.resolve(process.cwd(), "assets");
 const asset = (name) => path.join(ASSETS_DIR, name);
+const fontAsset = (name) => path.join(ASSETS_DIR, "fonts", name);
 
 function money(value) {
   const amount = Number(value) || 0;
@@ -37,6 +38,26 @@ function headerValue(value) {
   return v || "-";
 }
 
+function sanitizeCellText(value) {
+  return String(value ?? "").replace(/\r?\n/g, " ").trim();
+}
+
+function registerFonts(doc) {
+  const regular = fontAsset("NotoSansDevanagari-Regular.ttf");
+  const bold = fontAsset("NotoSansDevanagari-Bold.ttf");
+  if (fs.existsSync(regular)) doc.registerFont("Hindi-Regular", regular);
+  if (fs.existsSync(bold)) doc.registerFont("Hindi-Bold", bold);
+}
+
+function fontName(kind = "regular") {
+  const regular = fontAsset("NotoSansDevanagari-Regular.ttf");
+  const bold = fontAsset("NotoSansDevanagari-Bold.ttf");
+  if (kind === "bold") {
+    return fs.existsSync(bold) ? "Hindi-Bold" : "Helvetica-Bold";
+  }
+  return fs.existsSync(regular) ? "Hindi-Regular" : "Helvetica";
+}
+
 function fitColumnsToPage(doc, rawColumns) {
   const available =
     doc.page.width - doc.page.margins.left - doc.page.margins.right;
@@ -44,10 +65,34 @@ function fitColumnsToPage(doc, rawColumns) {
   if (total <= available) return rawColumns;
 
   const scale = available / total;
-  return rawColumns.map((col) => {
+  const fitted = rawColumns.map((col) => {
     const minWidth = ["consumer", "name", "receipt"].includes(col.key) ? 70 : 42;
     return { ...col, width: Math.max(minWidth, Math.floor(col.width * scale)) };
   });
+
+  let fittedTotal = fitted.reduce((sum, col) => sum + col.width, 0);
+  let overflow = fittedTotal - available;
+  while (overflow > 0) {
+    const col = fitted.find((c) => c.width > 42 && !["consumer", "name", "receipt"].includes(c.key));
+    if (!col) break;
+    col.width -= 1;
+    overflow -= 1;
+  }
+
+  fittedTotal = fitted.reduce((sum, col) => sum + col.width, 0);
+  let extra = available - fittedTotal;
+  const growthOrder = ["consumer", "name", "receipt", "date"];
+  while (extra > 0) {
+    for (const key of growthOrder) {
+      if (extra <= 0) break;
+      const col = fitted.find((c) => c.key === key);
+      if (!col) continue;
+      col.width += 1;
+      extra -= 1;
+    }
+  }
+
+  return fitted;
 }
 
 export async function createDailyIncomePdf({
@@ -73,6 +118,7 @@ export async function createDailyIncomePdf({
   const watermarkPath = asset("watermark.png");
 
   const generatedAt = toDisplayDate(new Date());
+  registerFonts(doc);
   const firstDetail = Array.isArray(details) && details.length ? details[0] : {};
   const divisionName =
     summary?.filters?.division_name ||
@@ -110,14 +156,14 @@ export async function createDailyIncomePdf({
 
     doc
       .fontSize(16)
-      .font("Helvetica-Bold")
+      .font(fontName("bold"))
       .text("Daily Collection Report", 0, doc.page.margins.top - 2, {
         align: "center",
       });
 
     doc
       .fontSize(8)
-      .font("Helvetica-Bold")
+      .font(fontName("bold"))
       .text(
         `Division: ${headerValue(divisionName)}`,
         doc.page.margins.left,
@@ -139,11 +185,13 @@ export async function createDailyIncomePdf({
 
     const fromDate = payload?.from_date
       ? toDisplayDate(payload.from_date).split(" ")[0]
+      : payload?.start_date
+      ? toDisplayDate(payload.start_date).split(" ")[0]
       : "-";
 
     doc
       .fontSize(9)
-      .font("Helvetica")
+      .font(fontName("regular"))
       .text(
         `Date: ${fromDate}  Generated At: ${generatedAt}`,
         0,
@@ -174,7 +222,7 @@ export async function createDailyIncomePdf({
   summaryItems.forEach((text, i) => {
     doc
       .fontSize(9)
-      .font("Helvetica-Bold")
+      .font(fontName("bold"))
       .text(text, doc.page.margins.left + colWidth * i, y, {
         width: colWidth,
       });
@@ -218,10 +266,27 @@ export async function createDailyIncomePdf({
     { key: "balance", label: "Balance", width: 85 },
   ];
   const columns = fitColumnsToPage(doc, rawColumns);
+  const wrapKeys = new Set(["consumer", "name", "receipt", "date"]);
 
-  const rowHeight = 42;
+  function estimateRowHeight(row, header = false) {
+    if (header) return 22;
+    let height = 24;
+    doc.font(fontName("regular")).fontSize(8);
+    columns.forEach((col) => {
+      if (!wrapKeys.has(col.key)) return;
+      const text = sanitizeCellText(row[col.key] ?? "");
+      const measured = doc.heightOfString(text, {
+        width: Math.max(10, col.width - 6),
+        align: "left",
+        lineGap: 0,
+      });
+      height = Math.max(height, Math.min(78, Math.ceil(measured) + 6));
+    });
+    return height;
+  }
 
   function drawRow(row, header = false) {
+    const rowHeight = estimateRowHeight(row, header);
     let x = doc.page.margins.left;
 
     if (header) {
@@ -234,9 +299,9 @@ export async function createDailyIncomePdf({
         )
         .fill("#e5e7eb");
 
-      doc.fillColor("#111").font("Helvetica-Bold").fontSize(8);
+      doc.fillColor("#111").font(fontName("bold")).fontSize(8);
     } else {
-      doc.fillColor("#111").font("Helvetica").fontSize(8);
+      doc.fillColor("#111").font(fontName("regular")).fontSize(8);
     }
 
     columns.forEach((col) => {
@@ -256,10 +321,14 @@ export async function createDailyIncomePdf({
         ? "right"
         : "left";
 
-      doc.text(String(row[col.key] ?? ""), x + 3, y, {
+      const text = String(row[col.key] ?? "");
+      const shouldWrap = header || wrapKeys.has(col.key);
+      doc.text(text, x + 3, y, {
         width: col.width - 6,
         align,
-        lineBreak: true,
+        lineBreak: shouldWrap,
+        height: rowHeight - 6,
+        ellipsis: !shouldWrap,
       });
 
       doc.moveTo(x, y - 3).lineTo(x, y + rowHeight - 3).stroke("#ddd");
@@ -268,6 +337,10 @@ export async function createDailyIncomePdf({
     });
 
     doc.moveTo(x, y - 3).lineTo(x, y + rowHeight - 3).stroke("#ddd");
+    doc
+      .moveTo(doc.page.margins.left, y + rowHeight - 3)
+      .lineTo(doc.page.width - doc.page.margins.right, y + rowHeight - 3)
+      .stroke("#ddd");
 
     y += rowHeight;
   }
@@ -280,17 +353,7 @@ export async function createDailyIncomePdf({
   const pageBottom = () => doc.page.height - doc.page.margins.bottom - 20;
 
   details.forEach((row, i) => {
-    if (y > pageBottom()) {
-      doc.addPage();
-      drawHeader();
-      y = doc.page.margins.top + 60;
-      drawRow(
-        Object.fromEntries(columns.map((c) => [c.key, c.label])),
-        true
-      );
-    }
-
-    drawRow({
+    const rowData = {
       index: i + 1,
 
       consumer: `${
@@ -328,7 +391,20 @@ export async function createDailyIncomePdf({
       advance: money(row.excess_amount),
 
       balance: money(row.balance),
-    });
+    };
+
+    const nextHeight = estimateRowHeight(rowData, false);
+    if (y + nextHeight > pageBottom()) {
+      doc.addPage();
+      drawHeader();
+      y = doc.page.margins.top + 60;
+      drawRow(
+        Object.fromEntries(columns.map((c) => [c.key, c.label])),
+        true
+      );
+    }
+
+    drawRow(rowData);
   });
 
   drawRow(
@@ -341,7 +417,7 @@ export async function createDailyIncomePdf({
 
   doc
     .fontSize(9)
-    .font("Helvetica")
+    .font(fontName("regular"))
     .text(
       `Page ${pagination?.page || 1} / ${pagination?.total_pages || 1} | Total Records: ${
         pagination?.total || details.length

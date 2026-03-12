@@ -3,7 +3,7 @@ import { getDailyIncomeReportRPC } from "../utils/rpcClient.js";
 import { createDailyIncomePdf } from "../utils/dailyIncomePdf.js";
 import { getConnectionByConsumerCode } from "../utils/grpc/connectionClient.js";
 
-const paymentModes = ["cash", "card", "online", "upi", "demand draft", "cheque", "all"];
+const paymentModes = ["cash", "card", "online", "upi", "demand draft", "cheque", "offline", "all"];
 const transactionTypes = ["form", "bill", "service", "demand", "all"];
 
 function firstText(...values) {

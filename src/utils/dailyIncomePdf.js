@@ -42,6 +42,18 @@ function sanitizeCellText(value) {
   return String(value ?? "").replace(/\r?\n/g, " ").trim();
 }
 
+function nameWithFather(row = {}) {
+  const consumerName = sanitizeCellText(
+    row.name ?? row.consumer_name ?? row.customer_name ?? ""
+  );
+  const fatherName = sanitizeCellText(
+    row.father_name ?? row.fatherName ?? row.f_name ?? ""
+  );
+
+  if (consumerName && fatherName) return `${consumerName} / ${fatherName}`;
+  return consumerName || fatherName || "-";
+}
+
 function registerFonts(doc) {
   const regular = fontAsset("NotoSansDevanagari-Regular.ttf");
   const bold = fontAsset("NotoSansDevanagari-Bold.ttf");
@@ -237,15 +249,11 @@ export async function createDailyIncomePdf({
 
     { key: "consumer", label: "Consumer", width: 170 },
 
-    { key: "name", label: "Name", width: 150 },
+    { key: "name", label: "Name / Father Name", width: 150 },
 
     { key: "receipt", label: "Receipt", width: 95 },
 
     { key: "date", label: "Date", width: 120 },
-
-    { key: "total", label: "Total", width: 85 },
-
-    { key: "paid", label: "Paid", width: 85 },
 
     { key: "water", label: "Water", width: 75 },
 
@@ -260,6 +268,11 @@ export async function createDailyIncomePdf({
     { key: "disc", label: "Disc", width: 70 },
 
     { key: "arrears", label: "Arrears", width: 85 },
+
+    
+    { key: "total", label: "Total", width: 85 },
+
+    { key: "paid", label: "Paid", width: 85 },
 
     { key: "advance", label: "Advance", width: 85 },
 
@@ -364,7 +377,7 @@ export async function createDailyIncomePdf({
         row.address || row.consumer_address || "-"
       }`,
 
-      name: row.name || "-",
+      name: nameWithFather(row),
 
       receipt: row.receipt_number || "-",
 

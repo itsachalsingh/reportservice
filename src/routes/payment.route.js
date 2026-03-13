@@ -57,10 +57,20 @@ async function enrichDetailsWithConnectionAddress(details = []) {
       try {
         const response = await getConnectionByConsumerCode(code);
         const address = firstText(response?.connection?.connection_address);
-        if (!address) continue;
+        const fatherName = firstText(
+          response?.connection?.father_name,
+          response?.connection?.fatherName,
+          response?.connection?.f_name
+        );
         rows.forEach((row) => {
-          row.address = row.address || address;
-          row.consumer_address = row.consumer_address || address;
+          if (address) {
+            row.address = row.address || address;
+            row.consumer_address = row.consumer_address || address;
+          }
+          if (fatherName) {
+            row.father_name = row.father_name || fatherName;
+            row.fatherName = row.fatherName || fatherName;
+          }
         });
       } catch {
         // Best-effort enrichment for PDF; ignore lookup failures.
@@ -70,6 +80,74 @@ async function enrichDetailsWithConnectionAddress(details = []) {
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
   return enriched;
+}
+
+async function fetchDailyIncomeReportForPdf(basePayload = {}) {
+  const pageSize = Math.min(
+    500,
+    Math.max(1, Number(basePayload?.limit) || 500)
+  );
+
+  const firstRpc = await getDailyIncomeReportRPC({
+    ...basePayload,
+    page: 1,
+    limit: pageSize,
+  });
+
+  if (!firstRpc?.ok) return firstRpc;
+
+  const firstData = firstRpc?.data || {};
+  const firstDetails = Array.isArray(firstData?.details) ? firstData.details : [];
+  const firstPagination = firstData?.pagination || {};
+  const totalPages = Math.max(Number(firstPagination?.total_pages) || 1, 1);
+
+  if (totalPages <= 1) {
+    return {
+      ...firstRpc,
+      data: {
+        ...firstData,
+        details: firstDetails,
+        pagination: {
+          ...firstPagination,
+          page: 1,
+          limit: pageSize,
+        },
+      },
+    };
+  }
+
+  const remainingResponses = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, index) =>
+      getDailyIncomeReportRPC({
+        ...basePayload,
+        page: index + 2,
+        limit: pageSize,
+      })
+    )
+  );
+
+  for (const rpc of remainingResponses) {
+    if (!rpc?.ok) return rpc;
+  }
+
+  const remainingDetails = remainingResponses.flatMap((rpc) =>
+    Array.isArray(rpc?.data?.details) ? rpc.data.details : []
+  );
+
+  return {
+    ...firstRpc,
+    data: {
+      ...firstData,
+      details: [...firstDetails, ...remainingDetails],
+      pagination: {
+        ...firstPagination,
+        page: 1,
+        limit: pageSize,
+        total_pages: totalPages,
+        total: Number(firstPagination?.total) || firstDetails.length + remainingDetails.length,
+      },
+    },
+  };
 }
 
 const dailyIncomeBody = {
@@ -166,7 +244,7 @@ async function createDailyIncomePdfHandler(req, reply) {
   };
 
   try {
-    const rpc = await getDailyIncomeReportRPC(payload);
+    const rpc = await fetchDailyIncomeReportForPdf(payload);
     if (!rpc?.ok) {
       return reply.code(500).send({
         ok: false,

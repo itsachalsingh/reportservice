@@ -218,8 +218,10 @@ export async function createDailyIncomePdf({
 
   /* summary */
 
-  const summaryItems = [
-    `Total Payment: Rs ${money(summary?.total_collection)}`,
+  const availableWidth =
+    doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const totalPaymentText = `Total Payment: Rs ${money(summary?.total_collection)}`;
+  const paymentMethodItems = [
     `Online: Rs ${money(summary?.by_payment_method?.online?.amount)}`,
     `Card: Rs ${money(summary?.by_payment_method?.card?.amount)}`,
     `Cheque: Rs ${money(summary?.by_payment_method?.cheque?.amount)}`,
@@ -227,20 +229,28 @@ export async function createDailyIncomePdf({
     `Cash: Rs ${money(summary?.by_payment_method?.cash?.amount)}`,
   ];
 
-  const colWidth =
-    (doc.page.width - doc.page.margins.left - doc.page.margins.right) /
-    summaryItems.length;
+  doc
+    .fontSize(10)
+    .font(fontName("bold"))
+    .text(totalPaymentText, doc.page.margins.left, y, {
+      width: availableWidth,
+      align: "left",
+    });
 
-  summaryItems.forEach((text, i) => {
+  y += 14;
+
+  const paymentMethodColWidth = availableWidth / paymentMethodItems.length;
+
+  paymentMethodItems.forEach((text, i) => {
     doc
       .fontSize(9)
       .font(fontName("bold"))
-      .text(text, doc.page.margins.left + colWidth * i, y, {
-        width: colWidth,
+      .text(text, doc.page.margins.left + paymentMethodColWidth * i, y, {
+        width: paymentMethodColWidth,
       });
   });
 
-  y += 25;
+  y += 24;
 
   /* column definition */
 

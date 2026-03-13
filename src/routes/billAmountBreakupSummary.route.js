@@ -652,11 +652,25 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
         })
       : { rows: [], pagination: null };
 
+    const totals = toBreakupResponse(summary);
+
+    console.log("[bill-amount-breakup-summary-report] patched-response", {
+      department_id: departmentId || null,
+      division_id: divisionId || null,
+      start_date:
+        summary?.filters?.start_date || body.start_date || body.startDate || null,
+      end_date:
+        summary?.filters?.end_date || body.end_date || body.endDate || null,
+      total_bill_generated_count: totals.total_bill_generated_count,
+      total_bill_paid_count: totals.total_bill_paid_count,
+      total_collected_amount_paid_only: totals.total_collected_amount,
+    });
+
     return reply.send({
       ok: true,
       data: {
         filters: summary?.filters || {},
-        totals: toBreakupResponse(summary),
+        totals,
         ...(groupByDivision
           ? {
               division_wise_details: pagedDivision.rows,

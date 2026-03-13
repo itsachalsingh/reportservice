@@ -116,6 +116,12 @@ function firstNonEmpty(...values) {
 
 function toBreakupResponse(summary = {}) {
   const data = summary?.data || {};
+  const totalBillGeneratedCount = toNum(data?.total_bill_generated_count);
+  const remainingBillGeneratedCount = toNum(data?.remaining_bill_generated_count);
+  const totalBillPaidCount = Math.max(
+    totalBillGeneratedCount - remainingBillGeneratedCount,
+    0
+  );
   const totalArrearFallback =
     toNum(data?.total_water_arrear_rounded_rupees) +
     toNum(data?.total_sewer_arrear_rounded_rupees) +
@@ -125,7 +131,8 @@ function toBreakupResponse(summary = {}) {
     toNum(data?.total_late_fine_rounded_rupees);
 
   return {
-    total_bill_generated_count: toNum(data?.total_bill_generated_count),
+    total_bill_generated_count: totalBillGeneratedCount,
+    total_bill_paid_count: totalBillPaidCount,
     total_amount: toNum(data?.total_bill_generated_value_rounded_rupees),
     total_collected_amount: toNum(data?.total_bill_collected_rounded_rupees),
     total_water_charges: toNum(data?.total_water_charges_rounded_rupees),
@@ -199,6 +206,7 @@ function rowIdentity(row = {}, type = "") {
 function sortRows(rows = [], { sortBy = "total_amount", sortOrder = "desc", type = "" } = {}) {
   const numericSortKeys = new Set([
     "total_bill_generated_count",
+    "total_bill_paid_count",
     "total_amount",
     "total_collected_amount",
     "total_water_charges",

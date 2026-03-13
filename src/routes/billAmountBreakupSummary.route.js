@@ -663,7 +663,7 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
         summary?.filters?.end_date || body.end_date || body.endDate || null,
       total_bill_generated_count: totals.total_bill_generated_count,
       total_bill_paid_count: totals.total_bill_paid_count,
-      total_collected_amount_paid_only: totals.total_collected_amount,
+      total_collected_amount_cash_only: totals.total_collected_amount,
     });
 
     return reply.send({

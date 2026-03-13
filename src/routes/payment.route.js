@@ -49,10 +49,13 @@ async function enrichDetailsWithConnectionAddress(details = []) {
       cursor += 1;
       const code = codes[idx];
       const rows = byConsumerCode.get(code) || [];
-      const alreadyPresent = rows.some((r) =>
-        firstText(r?.address, r?.consumer_address)
+      const needsAddress = rows.some(
+        (r) => !firstText(r?.address, r?.consumer_address)
       );
-      if (alreadyPresent) continue;
+      const needsFatherName = rows.some(
+        (r) => !firstText(r?.father_name, r?.fatherName, r?.f_name)
+      );
+      if (!needsAddress && !needsFatherName) continue;
 
       try {
         const response = await getConnectionByConsumerCode(code);

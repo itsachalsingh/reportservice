@@ -5,6 +5,18 @@ import { getConnectionByConsumerCode } from "../utils/grpc/connectionClient.js";
 
 const paymentModes = ["cash", "card", "online", "upi", "demand draft", "cheque", "offline", "all"];
 const transactionTypes = ["form", "bill", "service", "demand", "all"];
+const PDF_FETCH_LIMIT = Math.max(
+  1,
+  Math.min(500, Number(process.env.DAILY_INCOME_PDF_FETCH_LIMIT) || 500)
+);
+const PDF_FETCH_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.DAILY_INCOME_PDF_FETCH_CONCURRENCY) || 2
+);
+const PDF_RPC_TIMEOUT_MS = Math.max(
+  1,
+  Number(process.env.DAILY_INCOME_PDF_RPC_TIMEOUT_MS) || 60000
+);
 
 function firstText(...values) {
   for (const value of values) {
@@ -86,16 +98,14 @@ async function enrichDetailsWithConnectionAddress(details = []) {
 }
 
 async function fetchDailyIncomeReportForPdf(basePayload = {}) {
-  const pageSize = Math.min(
-    500,
-    Math.max(1, Number(basePayload?.limit) || 500)
-  );
+  const pageSize = PDF_FETCH_LIMIT;
+  const rpcOptions = { timeoutMs: PDF_RPC_TIMEOUT_MS };
 
   const firstRpc = await getDailyIncomeReportRPC({
     ...basePayload,
     page: 1,
     limit: pageSize,
-  });
+  }, rpcOptions);
 
   if (!firstRpc?.ok) return firstRpc;
 
@@ -119,19 +129,40 @@ async function fetchDailyIncomeReportForPdf(basePayload = {}) {
     };
   }
 
-  const remainingResponses = await Promise.all(
-    Array.from({ length: totalPages - 1 }, (_, index) =>
-      getDailyIncomeReportRPC({
-        ...basePayload,
-        page: index + 2,
-        limit: pageSize,
-      })
-    )
-  );
+  const remainingResponses = new Array(totalPages - 1);
+  const concurrency = Math.min(PDF_FETCH_CONCURRENCY, totalPages - 1);
+  let nextPage = 2;
+  let failedRpc = null;
 
-  for (const rpc of remainingResponses) {
-    if (!rpc?.ok) return rpc;
-  }
+  const worker = async () => {
+    while (!failedRpc && nextPage <= totalPages) {
+      const currentPage = nextPage;
+      nextPage += 1;
+
+      const rpc = await getDailyIncomeReportRPC(
+        {
+          ...basePayload,
+          page: currentPage,
+          limit: pageSize,
+          include_summary: false,
+          include_total: false,
+          resolve_location_names: false,
+        },
+        rpcOptions
+      );
+
+      if (!rpc?.ok) {
+        failedRpc = rpc;
+        return;
+      }
+
+      remainingResponses[currentPage - 2] = rpc;
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  if (failedRpc) return failedRpc;
 
   const remainingDetails = remainingResponses.flatMap((rpc) =>
     Array.isArray(rpc?.data?.details) ? rpc.data.details : []

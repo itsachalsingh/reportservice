@@ -16,9 +16,19 @@ if (!RABBIT_URL) {
 
 const VERIFY_TOKEN_QUEUE = 'verify.token.request';
 const DAILY_INCOME_REPORT_QUEUE = 'daily.income.report.request';
-const REPORT_TIMEOUT_MS = 15000;
+const REPORT_TIMEOUT_MS = Number(
+  process.env.DAILY_INCOME_REPORT_TIMEOUT_MS ||
+    process.env.REPORT_TIMEOUT_MS ||
+    15000
+);
 
 const TIMEOUT_MS = 5000;
+
+function resolveTimeoutMs(overrideMs, fallbackMs) {
+  const value = Number(overrideMs);
+  if (Number.isFinite(value) && value > 0) return value;
+  return fallbackMs;
+}
 
 async function connect() {
   if (!RABBIT_URL) throw new Error('RABBITMQ_URI is not set');
@@ -147,7 +157,7 @@ export async function verifyTokenRPC(token) {
   });
 }
 
-export async function getDailyIncomeReportRPC(input) {
+export async function getDailyIncomeReportRPC(input, options = {}) {
   await ensureConnected();
 
   const payload = {
@@ -165,7 +175,11 @@ export async function getDailyIncomeReportRPC(input) {
     payment_methods: input?.payment_methods || input?.payment_method || null,
     types: input?.types || input?.type || null,
     area_type: input?.area_type || null,
+    include_summary: input?.include_summary,
+    include_total: input?.include_total,
+    resolve_location_names: input?.resolve_location_names,
   };
+  const timeoutMs = resolveTimeoutMs(options?.timeoutMs, REPORT_TIMEOUT_MS);
 
   return new Promise((resolve, reject) => {
     const correlationId = randomUUID();
@@ -174,7 +188,7 @@ export async function getDailyIncomeReportRPC(input) {
         correlationMap.delete(correlationId);
         reject(new Error('Daily income report timeout'));
       }
-    }, REPORT_TIMEOUT_MS);
+    }, timeoutMs);
 
     correlationMap.set(correlationId, { resolve, reject, timer });
 

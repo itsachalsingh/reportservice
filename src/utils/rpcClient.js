@@ -175,6 +175,7 @@ export async function getDailyIncomeReportRPC(input, options = {}) {
     payment_methods: input?.payment_methods || input?.payment_method || null,
     types: input?.types || input?.type || null,
     area_type: input?.area_type || null,
+    max_time_ms: input?.max_time_ms || input?.maxTimeMs || null,
     include_summary: input?.include_summary,
     include_total: input?.include_total,
     resolve_location_names: input?.resolve_location_names,

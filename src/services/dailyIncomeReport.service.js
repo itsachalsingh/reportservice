@@ -1,0 +1,294 @@
+import { getDailyIncomeReportRPC } from "../utils/rpcClient.js";
+import { createDailyIncomePdf } from "../utils/dailyIncomePdf.js";
+import { getConnectionByConsumerCode } from "../utils/grpc/connectionClient.js";
+
+export const paymentModes = [
+  "cash",
+  "card",
+  "online",
+  "upi",
+  "demand draft",
+  "cheque",
+  "offline",
+  "all",
+];
+
+export const transactionTypes = ["form", "bill", "service", "demand", "all"];
+
+function parsePositiveInt(value, fallback = null) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.trunc(parsed);
+}
+
+export const PDF_FETCH_LIMIT = Math.max(
+  1,
+  Math.min(500, Number(process.env.DAILY_INCOME_PDF_FETCH_LIMIT) || 500)
+);
+
+export const PDF_FETCH_CONCURRENCY = Math.max(
+  1,
+  Number(process.env.DAILY_INCOME_PDF_FETCH_CONCURRENCY) || 2
+);
+
+export const PDF_RPC_TIMEOUT_MS = Math.max(
+  1,
+  Number(process.env.DAILY_INCOME_PDF_RPC_TIMEOUT_MS) || 60000
+);
+
+export const EXPORT_JOB_RPC_TIMEOUT_MS = Math.max(
+  PDF_RPC_TIMEOUT_MS,
+  Number(process.env.DAILY_INCOME_EXPORT_JOB_RPC_TIMEOUT_MS) || 180000
+);
+
+export const PDF_QUERY_MAX_TIME_MS = parsePositiveInt(
+  process.env.DAILY_INCOME_PDF_QUERY_MAX_TIME_MS,
+  null
+);
+
+export const EXPORT_JOB_QUERY_MAX_TIME_MS = parsePositiveInt(
+  process.env.DAILY_INCOME_EXPORT_QUERY_MAX_TIME_MS,
+  PDF_QUERY_MAX_TIME_MS
+);
+
+function firstText(...values) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const text = String(value).trim();
+    if (!text) continue;
+    return text;
+  }
+  return null;
+}
+
+export function buildDailyIncomePayload(input = {}) {
+  return {
+    start_date: input?.start_date,
+    end_date: input?.end_date,
+    collection_center:
+      input?.collection_center || input?.collection_center_id || null,
+    division: input?.division || input?.division_id || null,
+    scheme: input?.scheme || input?.scheme_id || null,
+    department: input?.department || input?.department_id || null,
+    revenue_unit_id: input?.revenue_unit_id || null,
+    ledger_id: input?.ledger_id || null,
+    lane_id: input?.lane_id || null,
+    page: input?.page,
+    limit: input?.limit,
+    payment_methods: input?.payment_methods || input?.payment_method || null,
+    types: input?.types || input?.type || null,
+    area_type: input?.area_type || null,
+  };
+}
+
+export async function enrichDetailsWithConnectionAddress(details = []) {
+  if (!Array.isArray(details) || !details.length) return details;
+
+  const enriched = details.map((row) => ({ ...row }));
+  const byConsumerCode = new Map();
+
+  for (const row of enriched) {
+    const code = firstText(
+      row?.consumer_number,
+      row?.consumer_code,
+      row?.consumerCode
+    );
+    if (!code) continue;
+    if (!byConsumerCode.has(code)) byConsumerCode.set(code, []);
+    byConsumerCode.get(code).push(row);
+  }
+
+  const codes = Array.from(byConsumerCode.keys());
+  if (!codes.length) return enriched;
+
+  const configured = Number(process.env.PDF_ADDRESS_ENRICH_CONCURRENCY || 8);
+  const concurrency = Math.max(
+    1,
+    Math.min(codes.length, Number.isFinite(configured) ? configured : 8)
+  );
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < codes.length) {
+      const idx = cursor;
+      cursor += 1;
+      const code = codes[idx];
+      const rows = byConsumerCode.get(code) || [];
+      const needsAddress = rows.some(
+        (r) => !firstText(r?.address, r?.consumer_address)
+      );
+      const needsFatherName = rows.some(
+        (r) => !firstText(r?.father_name, r?.fatherName, r?.f_name)
+      );
+      if (!needsAddress && !needsFatherName) continue;
+
+      try {
+        const response = await getConnectionByConsumerCode(code);
+        const address = firstText(response?.connection?.connection_address);
+        const fatherName = firstText(
+          response?.connection?.father_name,
+          response?.connection?.fatherName,
+          response?.connection?.f_name
+        );
+        rows.forEach((row) => {
+          if (address) {
+            row.address = row.address || address;
+            row.consumer_address = row.consumer_address || address;
+          }
+          if (fatherName) {
+            row.father_name = row.father_name || fatherName;
+            row.fatherName = row.fatherName || fatherName;
+          }
+        });
+      } catch {
+        // Best-effort enrichment for PDF; ignore lookup failures.
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  return enriched;
+}
+
+export async function fetchDailyIncomeReportForPdf(
+  basePayload = {},
+  options = {}
+) {
+  const pageSize = PDF_FETCH_LIMIT;
+  const rpcTimeoutMs = parsePositiveInt(
+    options?.rpcTimeoutMs,
+    PDF_RPC_TIMEOUT_MS
+  );
+  const queryMaxTimeMs = parsePositiveInt(
+    options?.queryMaxTimeMs,
+    PDF_QUERY_MAX_TIME_MS
+  );
+  const rpcOptions = { timeoutMs: rpcTimeoutMs };
+
+  const firstRpc = await getDailyIncomeReportRPC(
+    {
+      ...basePayload,
+      page: 1,
+      limit: pageSize,
+      ...(queryMaxTimeMs ? { max_time_ms: queryMaxTimeMs } : {}),
+    },
+    rpcOptions
+  );
+
+  if (!firstRpc?.ok) return firstRpc;
+
+  const firstData = firstRpc?.data || {};
+  const firstDetails = Array.isArray(firstData?.details)
+    ? firstData.details
+    : [];
+  const firstPagination = firstData?.pagination || {};
+  const totalPages = Math.max(
+    Number(firstPagination?.total_pages) || 1,
+    1
+  );
+
+  if (totalPages <= 1) {
+    return {
+      ...firstRpc,
+      data: {
+        ...firstData,
+        details: firstDetails,
+        pagination: {
+          ...firstPagination,
+          page: 1,
+          limit: pageSize,
+        },
+      },
+    };
+  }
+
+  const remainingResponses = new Array(totalPages - 1);
+  const concurrency = Math.min(PDF_FETCH_CONCURRENCY, totalPages - 1);
+  let nextPage = 2;
+  let failedRpc = null;
+
+  const worker = async () => {
+    while (!failedRpc && nextPage <= totalPages) {
+      const currentPage = nextPage;
+      nextPage += 1;
+
+      const rpc = await getDailyIncomeReportRPC(
+        {
+          ...basePayload,
+          page: currentPage,
+          limit: pageSize,
+          include_summary: false,
+          include_total: false,
+          resolve_location_names: false,
+          ...(queryMaxTimeMs ? { max_time_ms: queryMaxTimeMs } : {}),
+        },
+        rpcOptions
+      );
+
+      if (!rpc?.ok) {
+        failedRpc = rpc;
+        return;
+      }
+
+      remainingResponses[currentPage - 2] = rpc;
+    }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  if (failedRpc) return failedRpc;
+
+  const remainingDetails = remainingResponses.flatMap((rpc) =>
+    Array.isArray(rpc?.data?.details) ? rpc.data.details : []
+  );
+
+  return {
+    ...firstRpc,
+    data: {
+      ...firstData,
+      details: [...firstDetails, ...remainingDetails],
+      pagination: {
+        ...firstPagination,
+        page: 1,
+        limit: pageSize,
+        total_pages: totalPages,
+        total:
+          Number(firstPagination?.total) ||
+          firstDetails.length + remainingDetails.length,
+      },
+    },
+  };
+}
+
+export async function generateDailyIncomePdfBuffer(payload, options = {}) {
+  const rpc = await fetchDailyIncomeReportForPdf(payload, options);
+  if (!rpc?.ok) {
+    const err = new Error(
+      rpc?.message || "Failed to fetch daily income report"
+    );
+    err.details = rpc?.error || null;
+    throw err;
+  }
+
+  const reportData = rpc?.data || {};
+  const enrichedDetails = await enrichDetailsWithConnectionAddress(
+    Array.isArray(reportData?.details) ? reportData.details : []
+  );
+
+  const pdf = await createDailyIncomePdf({
+    payload,
+    summary: reportData?.summary || {},
+    details: enrichedDetails,
+    pagination: reportData?.pagination || {},
+  });
+
+  return {
+    pdf,
+    reportData: {
+      ...reportData,
+      details: enrichedDetails,
+    },
+    totalRecords:
+      Number(reportData?.pagination?.total) || enrichedDetails.length || 0,
+  };
+}

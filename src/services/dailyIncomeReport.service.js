@@ -70,6 +70,7 @@ export function buildDailyIncomePayload(input = {}) {
     division: input?.division || input?.division_id || null,
     scheme: input?.scheme || input?.scheme_id || null,
     department: input?.department || input?.department_id || null,
+    department_name: input?.department_name || null,
     revenue_unit_id: input?.revenue_unit_id || null,
     ledger_id: input?.ledger_id || null,
     lane_id: input?.lane_id || null,

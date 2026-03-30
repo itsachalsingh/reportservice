@@ -42,6 +42,70 @@ function sanitizeCellText(value) {
   return String(value ?? "").replace(/\r?\n/g, " ").trim();
 }
 
+function isObjectIdLike(value) {
+  return /^[a-f0-9]{24}$/i.test(String(value ?? "").trim());
+}
+
+function resolveDepartmentName(...values) {
+  for (const value of values) {
+    const text = sanitizeCellText(value);
+    if (!text) continue;
+
+    const token = text.toUpperCase();
+    if (["UJS", "S", "J"].includes(token)) return "Uttarakhand Jal Sansthan";
+    if (["UJN", "N"].includes(token)) return "Uttarakhand Jal Nigam";
+    if (isObjectIdLike(text)) continue;
+
+    return text;
+  }
+
+  return "-";
+}
+
+function toAmount(value) {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function getDisplayedPaidAmount(row = {}) {
+  return toAmount(row.paid_amount ?? row.amount);
+}
+
+function getDisplayedAdvanceAmount(row = {}) {
+  return toAmount(row.excess_amount ?? row.advance);
+}
+
+function buildDetailTotals(details = []) {
+  return details.reduce(
+    (totals, row) => ({
+      water: totals.water + toAmount(row.water_charges),
+      sewer: totals.sewer + toAmount(row.sewer_charges),
+      meter: totals.meter + toAmount(row.meter_rent),
+      other: totals.other + toAmount(row.others),
+      late: totals.late + toAmount(row.late_fee),
+      disc: totals.disc + toAmount(row.discount),
+      arrears: totals.arrears + toAmount(row.arrears),
+      total: totals.total + toAmount(row.bill_amount),
+      paid: totals.paid + getDisplayedPaidAmount(row),
+      advance: totals.advance + getDisplayedAdvanceAmount(row),
+      balance: totals.balance + toAmount(row.balance),
+    }),
+    {
+      water: 0,
+      sewer: 0,
+      meter: 0,
+      other: 0,
+      late: 0,
+      disc: 0,
+      arrears: 0,
+      total: 0,
+      paid: 0,
+      advance: 0,
+      balance: 0,
+    }
+  );
+}
+
 function nameWithFather(row = {}) {
   const consumerName = sanitizeCellText(
     row.name ?? row.consumer_name ?? row.customer_name ?? ""
@@ -132,6 +196,14 @@ export async function createDailyIncomePdf({
   const generatedAt = toDisplayDate(new Date());
   registerFonts(doc);
   const firstDetail = Array.isArray(details) && details.length ? details[0] : {};
+  const departmentName = resolveDepartmentName(
+    payload?.department_name,
+    summary?.filters?.department_name,
+    firstDetail?.department_name,
+    payload?.department,
+    summary?.filters?.department,
+    firstDetail?.department
+  );
   const divisionName =
     summary?.filters?.division_name ||
     payload?.division_name ||
@@ -176,6 +248,15 @@ export async function createDailyIncomePdf({
     doc
       .fontSize(8)
       .font(fontName("bold"))
+      .text(
+        `Department: ${headerValue(departmentName)}`,
+        doc.page.margins.left,
+        doc.page.margins.top - 13,
+        {
+          width: doc.page.width - doc.page.margins.left - doc.page.margins.right,
+          align: "right",
+        }
+      )
       .text(
         `Division: ${headerValue(divisionName)}`,
         doc.page.margins.left,
@@ -290,6 +371,7 @@ export async function createDailyIncomePdf({
   ];
   const columns = fitColumnsToPage(doc, rawColumns);
   const wrapKeys = new Set(["consumer", "name", "receipt", "date"]);
+  const detailTotals = buildDetailTotals(details);
 
   function estimateRowHeight(row, header = false) {
     if (header) return 22;
@@ -430,13 +512,29 @@ export async function createDailyIncomePdf({
     drawRow(rowData);
   });
 
-  drawRow(
+  const totalsRow = Object.assign(
     {
+      consumer: "",
       name: "TOTAL",
-      paid: money(summary?.total_collection),
+      receipt: "",
+      date: "",
     },
-    true
+    Object.fromEntries(
+      Object.entries(detailTotals).map(([key, value]) => [key, money(value)])
+    )
   );
+  const totalsRowHeight = estimateRowHeight(totalsRow, true);
+  if (y + totalsRowHeight + 24 > pageBottom()) {
+    doc.addPage();
+    drawHeader();
+    y = doc.page.margins.top + 60;
+    drawRow(
+      Object.fromEntries(columns.map((c) => [c.key, c.label])),
+      true
+    );
+  }
+
+  drawRow(totalsRow, true);
 
   doc
     .fontSize(9)

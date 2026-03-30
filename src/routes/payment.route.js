@@ -28,6 +28,7 @@ const dailyIncomeBody = {
     scheme_id: { type: "string" },
     department: { type: "string" },
     department_id: { type: "string" },
+    department_name: { type: "string" },
     revenue_unit_id: { type: "string" },
     ledger_id: { type: "string" },
     lane_id: { type: "string" },

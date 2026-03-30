@@ -7,11 +7,16 @@ const asset = (name) => path.join(ASSETS_DIR, name);
 const fontAsset = (name) => path.join(ASSETS_DIR, "fonts", name);
 
 function money(value) {
-  const amount = Number(value) || 0;
-  return amount.toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+  const amount = Math.round(Number(value) || 0);
+  const absoluteText = String(Math.abs(amount));
+
+  // Large values become too wide for the PDF table cells when Indian grouping is applied.
+  // For crore-scale totals, keep a plain integer string so values like 1000000000 fit cleanly.
+  if (absoluteText.length >= 8) {
+    return String(amount);
+  }
+
+  return amount.toLocaleString("en-IN");
 }
 
 function toDisplayDate(value) {

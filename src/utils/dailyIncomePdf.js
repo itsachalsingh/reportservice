@@ -11,10 +11,6 @@ function money(value) {
   return amount.toLocaleString("en-IN");
 }
 
-function wrapMoney(value) {
-  return money(value).replace(/,/g, ",\u200b");
-}
-
 function toDisplayDate(value) {
   if (!value) return "-";
 
@@ -371,13 +367,10 @@ export async function createDailyIncomePdf({
     { key: "balance", label: "Balance", width: 85 },
   ];
   const columns = fitColumnsToPage(doc, rawColumns);
+  const columnsByKey = Object.fromEntries(columns.map((col) => [col.key, col]));
   const detailTotals = buildDetailTotals(details);
 
-  const wrapKeys = new Set([
-    "consumer",
-    "name",
-    "receipt",
-    "date",
+  const numericKeys = new Set([
     "water",
     "sewer",
     "meter",
@@ -391,16 +384,87 @@ export async function createDailyIncomePdf({
     "balance",
   ]);
 
+  const wrapKeys = new Set([
+    "consumer",
+    "name",
+    "receipt",
+    "date",
+    ...numericKeys,
+  ]);
+
+  function normalizeRenderedCellText(value) {
+    return String(value ?? "").replace(/\r/g, "").trim();
+  }
+
+  function widthOfCellText(text) {
+    return doc.widthOfString(text, { lineGap: 0 });
+  }
+
+  function splitTextToFit(text, maxWidth, splitByComma = true) {
+    const normalized = normalizeRenderedCellText(text);
+    if (!normalized) return "";
+    if (widthOfCellText(normalized) <= maxWidth) return normalized;
+
+    const tokens = splitByComma && normalized.includes(",")
+      ? normalized.match(/[^,]+,?/g) || [normalized]
+      : normalized.split("");
+
+    const lines = [];
+    let currentLine = "";
+
+    for (const token of tokens) {
+      const candidate = currentLine ? `${currentLine}${token}` : token;
+      if (currentLine && widthOfCellText(candidate) > maxWidth) {
+        lines.push(currentLine);
+        currentLine = token;
+      } else {
+        currentLine = candidate;
+      }
+    }
+
+    if (currentLine) lines.push(currentLine);
+
+    const output = [];
+    for (const line of lines) {
+      if (widthOfCellText(line) <= maxWidth) {
+        output.push(line);
+        continue;
+      }
+
+      let charLine = "";
+      for (const ch of line.split("")) {
+        const candidate = charLine ? `${charLine}${ch}` : ch;
+        if (charLine && widthOfCellText(candidate) > maxWidth) {
+          output.push(charLine);
+          charLine = ch;
+        } else {
+          charLine = candidate;
+        }
+      }
+      if (charLine) output.push(charLine);
+    }
+
+    return output.join("\n");
+  }
+
+  function formatNumericCell(key, value, options = {}) {
+    const width = Math.max(10, (columnsByKey[key]?.width || 0) - 6);
+    const text = money(value);
+    doc.font(fontName(options.bold ? "bold" : "regular")).fontSize(8);
+    return splitTextToFit(text, width, true);
+  }
+
   function estimateRowHeight(row, options = {}) {
     if (options.isTableHeader) return 22;
     let height = 24;
-    doc.font(fontName("regular")).fontSize(8);
+    doc.font(fontName(options.isHeader ? "bold" : "regular")).fontSize(8);
     columns.forEach((col) => {
       if (!wrapKeys.has(col.key)) return;
-      const text = sanitizeCellText(row[col.key] ?? "");
+      const text = normalizeRenderedCellText(row[col.key] ?? "");
+      const align = numericKeys.has(col.key) ? "right" : "left";
       const measured = doc.heightOfString(text, {
         width: Math.max(10, col.width - 6),
-        align: "left",
+        align,
         lineGap: 0,
       });
       height = Math.max(height, Math.min(78, Math.ceil(measured) + 6));
@@ -444,7 +508,7 @@ export async function createDailyIncomePdf({
         ? "right"
         : "left";
 
-      const text = String(row[col.key] ?? "");
+      const text = normalizeRenderedCellText(row[col.key] ?? "");
       const shouldWrap = options.isTableHeader || wrapKeys.has(col.key);
       doc.text(text, x + 3, y, {
         width: col.width - 6,
@@ -493,27 +557,27 @@ export async function createDailyIncomePdf({
 
       date: toDisplayDate(row.transaction_date),
 
-      total: wrapMoney(row.bill_amount),
+      total: formatNumericCell("total", row.bill_amount),
 
-      paid: wrapMoney(row.paid_amount ?? row.amount),
+      paid: formatNumericCell("paid", row.paid_amount ?? row.amount),
 
-      water: wrapMoney(row.water_charges),
+      water: formatNumericCell("water", row.water_charges),
 
-      sewer: wrapMoney(row.sewer_charges),
+      sewer: formatNumericCell("sewer", row.sewer_charges),
 
-      meter: wrapMoney(row.meter_rent),
+      meter: formatNumericCell("meter", row.meter_rent),
 
-      other: wrapMoney(row.others),
+      other: formatNumericCell("other", row.others),
 
-      late: wrapMoney(row.late_fee),
+      late: formatNumericCell("late", row.late_fee),
 
-      disc: wrapMoney(row.discount),
+      disc: formatNumericCell("disc", row.discount),
 
-      arrears: wrapMoney(row.arrears),
+      arrears: formatNumericCell("arrears", row.arrears),
 
-      advance: wrapMoney(row.excess_amount),
+      advance: formatNumericCell("advance", row.excess_amount),
 
-      balance: wrapMoney(row.balance),
+      balance: formatNumericCell("balance", row.balance),
     };
 
     const nextHeight = estimateRowHeight(rowData);
@@ -538,7 +602,10 @@ export async function createDailyIncomePdf({
       date: "",
     },
     Object.fromEntries(
-      Object.entries(detailTotals).map(([key, value]) => [key, wrapMoney(value)])
+      Object.entries(detailTotals).map(([key, value]) => [
+        key,
+        formatNumericCell(key, value, { bold: true }),
+      ])
     )
   );
   const totalsRowHeight = estimateRowHeight(totalsRow);

@@ -8,15 +8,11 @@ const fontAsset = (name) => path.join(ASSETS_DIR, "fonts", name);
 
 function money(value) {
   const amount = Math.round(Number(value) || 0);
-  const absoluteText = String(Math.abs(amount));
-
-  // Large values become too wide for the PDF table cells when Indian grouping is applied.
-  // For crore-scale totals, keep a plain integer string so values like 1000000000 fit cleanly.
-  if (absoluteText.length >= 8) {
-    return String(amount);
-  }
-
   return amount.toLocaleString("en-IN");
+}
+
+function wrapMoney(value) {
+  return money(value).replace(/,/g, ",\u200b");
 }
 
 function toDisplayDate(value) {
@@ -375,11 +371,28 @@ export async function createDailyIncomePdf({
     { key: "balance", label: "Balance", width: 85 },
   ];
   const columns = fitColumnsToPage(doc, rawColumns);
-  const wrapKeys = new Set(["consumer", "name", "receipt", "date"]);
   const detailTotals = buildDetailTotals(details);
 
-  function estimateRowHeight(row, header = false) {
-    if (header) return 22;
+  const wrapKeys = new Set([
+    "consumer",
+    "name",
+    "receipt",
+    "date",
+    "water",
+    "sewer",
+    "meter",
+    "other",
+    "late",
+    "disc",
+    "arrears",
+    "total",
+    "paid",
+    "advance",
+    "balance",
+  ]);
+
+  function estimateRowHeight(row, options = {}) {
+    if (options.isTableHeader) return 22;
     let height = 24;
     doc.font(fontName("regular")).fontSize(8);
     columns.forEach((col) => {
@@ -395,11 +408,11 @@ export async function createDailyIncomePdf({
     return height;
   }
 
-  function drawRow(row, header = false) {
-    const rowHeight = estimateRowHeight(row, header);
+  function drawRow(row, options = {}) {
+    const rowHeight = estimateRowHeight(row, options);
     let x = doc.page.margins.left;
 
-    if (header) {
+    if (options.isHeader) {
       doc
         .rect(
           doc.page.margins.left,
@@ -432,7 +445,7 @@ export async function createDailyIncomePdf({
         : "left";
 
       const text = String(row[col.key] ?? "");
-      const shouldWrap = header || wrapKeys.has(col.key);
+      const shouldWrap = options.isTableHeader || wrapKeys.has(col.key);
       doc.text(text, x + 3, y, {
         width: col.width - 6,
         align,
@@ -457,7 +470,7 @@ export async function createDailyIncomePdf({
 
   drawRow(
     Object.fromEntries(columns.map((c) => [c.key, c.label])),
-    true
+    { isHeader: true, isTableHeader: true }
   );
 
   const pageBottom = () => doc.page.height - doc.page.margins.bottom - 20;
@@ -480,37 +493,37 @@ export async function createDailyIncomePdf({
 
       date: toDisplayDate(row.transaction_date),
 
-      total: money(row.bill_amount),
+      total: wrapMoney(row.bill_amount),
 
-      paid: money(row.paid_amount ?? row.amount),
+      paid: wrapMoney(row.paid_amount ?? row.amount),
 
-      water: money(row.water_charges),
+      water: wrapMoney(row.water_charges),
 
-      sewer: money(row.sewer_charges),
+      sewer: wrapMoney(row.sewer_charges),
 
-      meter: money(row.meter_rent),
+      meter: wrapMoney(row.meter_rent),
 
-      other: money(row.others),
+      other: wrapMoney(row.others),
 
-      late: money(row.late_fee),
+      late: wrapMoney(row.late_fee),
 
-      disc: money(row.discount),
+      disc: wrapMoney(row.discount),
 
-      arrears: money(row.arrears),
+      arrears: wrapMoney(row.arrears),
 
-      advance: money(row.excess_amount),
+      advance: wrapMoney(row.excess_amount),
 
-      balance: money(row.balance),
+      balance: wrapMoney(row.balance),
     };
 
-    const nextHeight = estimateRowHeight(rowData, false);
+    const nextHeight = estimateRowHeight(rowData);
     if (y + nextHeight > pageBottom()) {
       doc.addPage();
       drawHeader();
       y = doc.page.margins.top + 60;
       drawRow(
         Object.fromEntries(columns.map((c) => [c.key, c.label])),
-        true
+        { isHeader: true, isTableHeader: true }
       );
     }
 
@@ -525,21 +538,21 @@ export async function createDailyIncomePdf({
       date: "",
     },
     Object.fromEntries(
-      Object.entries(detailTotals).map(([key, value]) => [key, money(value)])
+      Object.entries(detailTotals).map(([key, value]) => [key, wrapMoney(value)])
     )
   );
-  const totalsRowHeight = estimateRowHeight(totalsRow, true);
+  const totalsRowHeight = estimateRowHeight(totalsRow);
   if (y + totalsRowHeight + 24 > pageBottom()) {
     doc.addPage();
     drawHeader();
     y = doc.page.margins.top + 60;
     drawRow(
       Object.fromEntries(columns.map((c) => [c.key, c.label])),
-      true
+      { isHeader: true, isTableHeader: true }
     );
   }
 
-  drawRow(totalsRow, true);
+  drawRow(totalsRow, { isHeader: true });
 
   doc
     .fontSize(9)

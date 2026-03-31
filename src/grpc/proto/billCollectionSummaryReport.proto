@@ -104,6 +104,7 @@ message BillCollectionSummaryData {
   int64 total_consumers = 1;
   int64 total_bill_generated_count = 2;
   int64 remaining_bill_generated_count = 3;
+  int64 total_bill_paid_count = 57;
   double total_bill_generated_value = 4;
   double total_bill_collected = 5;
   double total_bill_remaining = 6;

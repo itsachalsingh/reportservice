@@ -118,10 +118,10 @@ function toBreakupResponse(summary = {}) {
   const data = summary?.data || {};
   const totalBillGeneratedCount = toNum(data?.total_bill_generated_count);
   const remainingBillGeneratedCount = toNum(data?.remaining_bill_generated_count);
-  const totalBillPaidCount = Math.max(
-    totalBillGeneratedCount - remainingBillGeneratedCount,
-    0
-  );
+  const totalBillPaidCount =
+    data?.total_bill_paid_count != null
+      ? toNum(data?.total_bill_paid_count)
+      : Math.max(totalBillGeneratedCount - remainingBillGeneratedCount, 0);
   const totalArrearFallback =
     toNum(data?.total_water_arrear_rounded_rupees) +
     toNum(data?.total_sewer_arrear_rounded_rupees) +

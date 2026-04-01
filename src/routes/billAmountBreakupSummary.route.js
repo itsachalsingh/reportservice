@@ -147,6 +147,11 @@ function toBreakupResponse(summary = {}) {
     total_discount: toNum(data?.total_discount_rounded_rupees),
     total_arrear: toNum(data?.total_arrear_rounded_rupees) || totalArrearFallback,
     total_advance: toNum(data?.total_advance_rounded_rupees),
+    waterPaid: toNum(data?.total_water_paid_rounded_rupees),
+    meterPaid: toNum(data?.total_meter_paid_rounded_rupees),
+    sewerPaid: toNum(data?.total_sewer_paid_rounded_rupees),
+    otherPaid: toNum(data?.total_other_paid_rounded_rupees),
+    finePaid: toNum(data?.total_fine_paid_rounded_rupees),
   };
 }
 
@@ -222,6 +227,11 @@ function sortRows(rows = [], { sortBy = "total_amount", sortOrder = "desc", type
     "total_advance",
     "total_discount",
     "total_late_fee_arrear_and_fine",
+    "waterPaid",
+    "meterPaid",
+    "sewerPaid",
+    "otherPaid",
+    "finePaid",
   ]);
   const allowedKeys = new Set([
     ...numericSortKeys,
@@ -663,7 +673,7 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
         summary?.filters?.end_date || body.end_date || body.endDate || null,
       total_bill_generated_count: totals.total_bill_generated_count,
       total_bill_paid_count: totals.total_bill_paid_count,
-      total_collected_amount_cash_only: totals.total_collected_amount,
+      total_collected_amount_paid_and_partial: totals.total_collected_amount,
     });
 
     return reply.send({

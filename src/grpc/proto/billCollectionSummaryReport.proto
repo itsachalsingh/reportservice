@@ -158,6 +158,11 @@ message BillCollectionSummaryData {
   double total_advance_rounded_rupees = 50;
   double total_late_fee_arrear_rounded_rupees = 53;
   double total_discount_rounded_rupees = 56;
+  double total_water_paid_rounded_rupees = 58;
+  double total_meter_paid_rounded_rupees = 59;
+  double total_sewer_paid_rounded_rupees = 60;
+  double total_other_paid_rounded_rupees = 61;
+  double total_fine_paid_rounded_rupees = 62;
 }
 
 message BillCollectionSummaryResponse {

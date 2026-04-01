@@ -208,6 +208,25 @@ function rowIdentity(row = {}, type = "") {
   };
 }
 
+function groupKeys(type = "") {
+  if (type === "division") {
+    return {
+      idKey: "division_id",
+      nameKey: "division_name",
+    };
+  }
+  if (type === "collection_center") {
+    return {
+      idKey: "collection_center_id",
+      nameKey: "collection_center_name",
+    };
+  }
+  return {
+    idKey: "scheme_id",
+    nameKey: "scheme_name",
+  };
+}
+
 function sortRows(rows = [], { sortBy = "total_amount", sortOrder = "desc", type = "" } = {}) {
   const numericSortKeys = new Set([
     "total_bill_generated_count",
@@ -384,67 +403,53 @@ async function fetchMasterRows({ type = "", department_id = "", division_id = ""
   return fetchSchemesByScope({ department_id: dep, division_id: div });
 }
 
-function mergeWithMasterRows({ type = "", summaryRows = [], masterRows = [] }) {
-  const idKey =
-    type === "division"
-      ? "division_id"
-      : type === "collection_center"
-      ? "collection_center_id"
-      : "scheme_id";
-  const nameKey =
-    type === "division"
-      ? "division_name"
-      : type === "collection_center"
-      ? "collection_center_name"
-      : "scheme_name";
+export function normalizeScopedGroupRows({
+  type = "",
+  summaryRows = [],
+  masterRows = [],
+  requestedId = "",
+  requestedName = "",
+}) {
+  const { idKey, nameKey } = groupKeys(type);
+  const normalizedRequestedId = cleanString(requestedId);
+  const normalizedRequestedName = cleanString(requestedName);
 
-  const map = new Map();
-  for (const row of summaryRows || []) {
-    const id = cleanString(row?.[idKey]);
-    if (!id) continue;
-    map.set(id, {
-      [idKey]: id,
-      [nameKey]: cleanString(row?.[nameKey]),
-    });
-  }
-  for (const row of masterRows || []) {
-    const id = cleanString(row?.[idKey]);
-    if (!id) continue;
-    const existing = map.get(id) || {};
-    map.set(id, {
-      [idKey]: id,
-      [nameKey]: cleanString(existing?.[nameKey] || row?.[nameKey]),
-    });
-  }
-  return [...map.values()];
-}
-
-function normalizeSchemeRows({ summaryRows = [], masterRows = [] }) {
-  const nameById = new Map(
+  const masterNameById = new Map(
     (masterRows || [])
-      .map((row) => ({
-        id: cleanString(row?.scheme_id),
-        name: cleanString(row?.scheme_name),
-      }))
-      .filter((row) => row.id)
-      .map((row) => [row.id, row.name])
+      .map((row) => [cleanString(row?.[idKey]), cleanString(row?.[nameKey])])
+      .filter(([id]) => Boolean(id))
   );
 
-  const deduped = new Map();
+  const summaryMap = new Map();
   for (const row of summaryRows || []) {
-    const id = cleanString(row?.scheme_id);
+    const id = cleanString(row?.[idKey]);
     if (!id) continue;
-    const incomingName = cleanString(row?.scheme_name);
-    const mappedName = cleanString(nameById.get(id));
-    const finalName = mappedName || incomingName;
-    const existing = deduped.get(id) || {};
-    deduped.set(id, {
-      scheme_id: id,
-      scheme_name: cleanString(existing?.scheme_name || finalName),
+    const existing = summaryMap.get(id) || {};
+    summaryMap.set(id, {
+      [idKey]: id,
+      [nameKey]: cleanString(
+        existing?.[nameKey] || row?.[nameKey] || masterNameById.get(id)
+      ),
     });
   }
 
-  return [...deduped.values()];
+  const targetIds = normalizedRequestedId
+    ? [normalizedRequestedId]
+    : [...summaryMap.keys()];
+
+  return targetIds
+    .filter(Boolean)
+    .map((id) => {
+      const row = summaryMap.get(id) || {};
+      return {
+        [idKey]: id,
+        [nameKey]: cleanString(
+          row?.[nameKey] ||
+            masterNameById.get(id) ||
+            (id === normalizedRequestedId ? normalizedRequestedName : "")
+        ),
+      };
+    });
 }
 
 async function buildGroupWiseDetails({
@@ -524,11 +529,18 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
       body.department_id || body.departmentId || body.department
     );
     const divisionId = cleanString(body.division_id || body.divisionId || body.division);
+    const collectionCenterId = cleanString(
+      body.collection_center_id ||
+        body.collectionCenterId ||
+        body.collection_center ||
+        body.collectionCenter
+    );
+    const schemeId = cleanString(body.scheme_id || body.schemeId || body.scheme);
 
     const summary = await fetchBillCollectionSummary(payload);
 
     const divisionRows = groupByDivision
-      ? mergeWithMasterRows({
+      ? normalizeScopedGroupRows({
           type: "division",
           summaryRows: Array.isArray(summary?.data?.division_wise)
             ? summary.data.division_wise
@@ -538,10 +550,12 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
             department_id: departmentId,
             division_id: divisionId,
           }),
+          requestedId: divisionId,
+          requestedName: cleanString(body.division),
         })
       : [];
     const collectionCenterRows = groupByCollectionCenter
-      ? mergeWithMasterRows({
+      ? normalizeScopedGroupRows({
           type: "collection_center",
           summaryRows: Array.isArray(summary?.data?.collection_center_wise)
             ? summary.data.collection_center_wise
@@ -551,10 +565,13 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
             department_id: departmentId,
             division_id: divisionId,
           }),
+          requestedId: collectionCenterId,
+          requestedName: cleanString(body.collection_center || body.collectionCenter),
         })
       : [];
     const schemeRows = groupByScheme
-      ? normalizeSchemeRows({
+      ? normalizeScopedGroupRows({
+          type: "scheme",
           summaryRows: Array.isArray(summary?.data?.scheme_wise)
             ? summary.data.scheme_wise
             : [],
@@ -563,6 +580,8 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
             department_id: departmentId,
             division_id: divisionId,
           }),
+          requestedId: schemeId,
+          requestedName: cleanString(body.scheme),
         })
       : [];
 

@@ -3,6 +3,7 @@ import { fetchBillCollectionSummary } from "../utils/grpc/billCollectionSummaryC
 import { getDivisionsByDepartment } from "../utils/grpc/divisionClient.js";
 import { getCollectionCenters } from "../utils/grpc/collectionCenterClient.js";
 import { getSchemes } from "../utils/grpc/schemeClient.js";
+import { createBillAmountBreakupSummaryPdf } from "../utils/billAmountBreakupSummaryPdf.js";
 
 const reportBody = {
   type: "object",
@@ -491,240 +492,304 @@ async function buildGroupWiseDetails({
   return details.filter(Boolean);
 }
 
-async function createBillAmountBreakupSummaryHandler(req, reply) {
-  try {
-    const body = req.body || {};
-    const groupByDivision = body.group_by_division ?? body.groupByDivision ?? true;
-    const groupByCollectionCenter =
-      body.group_by_collection_center ?? body.groupByCollectionCenter ?? true;
-    const groupByScheme = body.group_by_scheme ?? body.groupByScheme ?? true;
-    const globalSortBy = String(body.sort_by || body.sortBy || "total_amount").trim();
-    const globalSortOrder = normalizeSortOrder(
-      body.sort_order || body.sortOrder || "desc",
-      "desc"
-    );
-    const globalPage = toPositiveInt(body.page, 1);
-    const globalPageSize = toPositiveInt(body.page_size ?? body.pageSize, 50);
+async function buildBillAmountBreakupSummaryResponse(
+  body = {},
+  options = {}
+) {
+  const includePagination = options?.paginate !== false;
+  const groupByDivision = body.group_by_division ?? body.groupByDivision ?? true;
+  const groupByCollectionCenter =
+    body.group_by_collection_center ?? body.groupByCollectionCenter ?? true;
+  const groupByScheme = body.group_by_scheme ?? body.groupByScheme ?? true;
+  const globalSortBy = String(body.sort_by || body.sortBy || "total_amount").trim();
+  const globalSortOrder = normalizeSortOrder(
+    body.sort_order || body.sortOrder || "desc",
+    "desc"
+  );
+  const globalPage = toPositiveInt(body.page, 1);
+  const globalPageSize = toPositiveInt(body.page_size ?? body.pageSize, 50);
 
-    const payload = {
-      ...body,
-      group_by_division: groupByDivision,
-      groupByDivision: groupByDivision,
-      group_by_collection_center: groupByCollectionCenter,
-      groupByCollectionCenter: groupByCollectionCenter,
-      group_by_scheme: groupByScheme,
-      groupByScheme: groupByScheme,
-    };
-    const totalsOnlyPayload = {
-      ...body,
-      group_by_division: false,
-      groupByDivision: false,
-      group_by_collection_center: false,
-      groupByCollectionCenter: false,
-      group_by_scheme: false,
-      groupByScheme: false,
-    };
+  const payload = {
+    ...body,
+    group_by_division: groupByDivision,
+    groupByDivision: groupByDivision,
+    group_by_collection_center: groupByCollectionCenter,
+    groupByCollectionCenter: groupByCollectionCenter,
+    group_by_scheme: groupByScheme,
+    groupByScheme: groupByScheme,
+  };
+  const totalsOnlyPayload = {
+    ...body,
+    group_by_division: false,
+    groupByDivision: false,
+    group_by_collection_center: false,
+    groupByCollectionCenter: false,
+    group_by_scheme: false,
+    groupByScheme: false,
+  };
 
-    const departmentId = cleanString(
-      body.department_id || body.departmentId || body.department
-    );
-    const divisionId = cleanString(body.division_id || body.divisionId || body.division);
-    const collectionCenterId = cleanString(
-      body.collection_center_id ||
-        body.collectionCenterId ||
-        body.collection_center ||
-        body.collectionCenter
-    );
-    const schemeId = cleanString(body.scheme_id || body.schemeId || body.scheme);
+  const departmentId = cleanString(
+    body.department_id || body.departmentId || body.department
+  );
+  const divisionId = cleanString(body.division_id || body.divisionId || body.division);
+  const collectionCenterId = cleanString(
+    body.collection_center_id ||
+      body.collectionCenterId ||
+      body.collection_center ||
+      body.collectionCenter
+  );
+  const schemeId = cleanString(body.scheme_id || body.schemeId || body.scheme);
 
-    const summary = await fetchBillCollectionSummary(payload);
+  const summary = await fetchBillCollectionSummary(payload);
 
-    const divisionRows = groupByDivision
-      ? normalizeScopedGroupRows({
+  const divisionRows = groupByDivision
+    ? normalizeScopedGroupRows({
+        type: "division",
+        summaryRows: Array.isArray(summary?.data?.division_wise)
+          ? summary.data.division_wise
+          : [],
+        masterRows: await fetchMasterRows({
           type: "division",
-          summaryRows: Array.isArray(summary?.data?.division_wise)
-            ? summary.data.division_wise
-            : [],
-          masterRows: await fetchMasterRows({
-            type: "division",
-            department_id: departmentId,
-            division_id: divisionId,
-          }),
-          requestedId: divisionId,
-          requestedName: cleanString(body.division),
-        })
-      : [];
-    const collectionCenterRows = groupByCollectionCenter
-      ? normalizeScopedGroupRows({
+          department_id: departmentId,
+          division_id: divisionId,
+        }),
+        requestedId: divisionId,
+        requestedName: cleanString(body.division),
+      })
+    : [];
+  const collectionCenterRows = groupByCollectionCenter
+    ? normalizeScopedGroupRows({
+        type: "collection_center",
+        summaryRows: Array.isArray(summary?.data?.collection_center_wise)
+          ? summary.data.collection_center_wise
+          : [],
+        masterRows: await fetchMasterRows({
           type: "collection_center",
-          summaryRows: Array.isArray(summary?.data?.collection_center_wise)
-            ? summary.data.collection_center_wise
-            : [],
-          masterRows: await fetchMasterRows({
-            type: "collection_center",
-            department_id: departmentId,
-            division_id: divisionId,
-          }),
-          requestedId: collectionCenterId,
-          requestedName: cleanString(body.collection_center || body.collectionCenter),
-        })
-      : [];
-    const schemeRows = groupByScheme
-      ? normalizeScopedGroupRows({
+          department_id: departmentId,
+          division_id: divisionId,
+        }),
+        requestedId: collectionCenterId,
+        requestedName: cleanString(body.collection_center || body.collectionCenter),
+      })
+    : [];
+  const schemeRows = groupByScheme
+    ? normalizeScopedGroupRows({
+        type: "scheme",
+        summaryRows: Array.isArray(summary?.data?.scheme_wise)
+          ? summary.data.scheme_wise
+          : [],
+        masterRows: await fetchMasterRows({
           type: "scheme",
-          summaryRows: Array.isArray(summary?.data?.scheme_wise)
-            ? summary.data.scheme_wise
-            : [],
-          masterRows: await fetchMasterRows({
-            type: "scheme",
-            department_id: departmentId,
-            division_id: divisionId,
-          }),
-          requestedId: schemeId,
-          requestedName: cleanString(body.scheme),
-        })
-      : [];
+          department_id: departmentId,
+          division_id: divisionId,
+        }),
+        requestedId: schemeId,
+        requestedName: cleanString(body.scheme),
+      })
+    : [];
 
-    const divisionWiseDetails = groupByDivision
-      ? await buildGroupWiseDetails({
-          rows: divisionRows,
-          type: "division",
-          basePayload: totalsOnlyPayload,
-        })
-      : [];
-    const collectionCenterWiseDetails = groupByCollectionCenter
-      ? await buildGroupWiseDetails({
-          rows: collectionCenterRows,
-          type: "collection_center",
-          basePayload: totalsOnlyPayload,
-        })
-      : [];
-    const schemeWiseDetails = groupByScheme
-      ? await buildGroupWiseDetails({
-          rows: schemeRows,
-          type: "scheme",
-          basePayload: totalsOnlyPayload,
-        })
-      : [];
+  const divisionWiseDetails = groupByDivision
+    ? await buildGroupWiseDetails({
+        rows: divisionRows,
+        type: "division",
+        basePayload: totalsOnlyPayload,
+      })
+    : [];
+  const collectionCenterWiseDetails = groupByCollectionCenter
+    ? await buildGroupWiseDetails({
+        rows: collectionCenterRows,
+        type: "collection_center",
+        basePayload: totalsOnlyPayload,
+      })
+    : [];
+  const schemeWiseDetails = groupByScheme
+    ? await buildGroupWiseDetails({
+        rows: schemeRows,
+        type: "scheme",
+        basePayload: totalsOnlyPayload,
+      })
+    : [];
 
-    const divisionSortBy = String(
-      body.division_sort_by || body.divisionSortBy || globalSortBy
-    ).trim();
-    const divisionSortOrder = normalizeSortOrder(
-      body.division_sort_order || body.divisionSortOrder || globalSortOrder,
-      globalSortOrder
-    );
-    const divisionPage = toPositiveInt(body.division_page ?? body.divisionPage, globalPage);
-    const divisionPageSize = toPositiveInt(
-      body.division_page_size ?? body.divisionPageSize,
-      globalPageSize
-    );
+  const totals = toBreakupResponse(summary);
+  const data = {
+    filters: summary?.filters || {},
+    totals,
+  };
 
-    const collectionCenterSortBy = String(
-      body.collection_center_sort_by ||
-        body.collectionCenterSortBy ||
-        globalSortBy
-    ).trim();
-    const collectionCenterSortOrder = normalizeSortOrder(
-      body.collection_center_sort_order ||
-        body.collectionCenterSortOrder ||
-        globalSortOrder,
-      globalSortOrder
-    );
-    const collectionCenterPage = toPositiveInt(
-      body.collection_center_page ?? body.collectionCenterPage,
-      globalPage
-    );
-    const collectionCenterPageSize = toPositiveInt(
-      body.collection_center_page_size ?? body.collectionCenterPageSize,
-      globalPageSize
-    );
+  if (groupByDivision) {
+    if (includePagination) {
+      const divisionSortBy = String(
+        body.division_sort_by || body.divisionSortBy || globalSortBy
+      ).trim();
+      const divisionSortOrder = normalizeSortOrder(
+        body.division_sort_order || body.divisionSortOrder || globalSortOrder,
+        globalSortOrder
+      );
+      const divisionPage = toPositiveInt(
+        body.division_page ?? body.divisionPage,
+        globalPage
+      );
+      const divisionPageSize = toPositiveInt(
+        body.division_page_size ?? body.divisionPageSize,
+        globalPageSize
+      );
+      const pagedDivision = applySortAndPagination(divisionWiseDetails, {
+        type: "division",
+        sortBy: divisionSortBy,
+        sortOrder: divisionSortOrder,
+        page: divisionPage,
+        pageSize: divisionPageSize,
+      });
+      data.division_wise_details = pagedDivision.rows;
+      data.division_wise_pagination = pagedDivision.pagination;
+    } else {
+      data.division_wise_details = sortRows(divisionWiseDetails, {
+        type: "division",
+        sortBy: body.division_sort_by || body.divisionSortBy || globalSortBy,
+        sortOrder:
+          body.division_sort_order || body.divisionSortOrder || globalSortOrder,
+      });
+    }
+  }
 
-    const schemeSortBy = String(
-      body.scheme_sort_by || body.schemeSortBy || globalSortBy
-    ).trim();
-    const schemeSortOrder = normalizeSortOrder(
-      body.scheme_sort_order || body.schemeSortOrder || globalSortOrder,
-      globalSortOrder
-    );
-    const schemePage = toPositiveInt(body.scheme_page ?? body.schemePage, globalPage);
-    const schemePageSize = toPositiveInt(
-      body.scheme_page_size ?? body.schemePageSize,
-      globalPageSize
-    );
-
-    const pagedDivision = groupByDivision
-      ? applySortAndPagination(divisionWiseDetails, {
-          type: "division",
-          sortBy: divisionSortBy,
-          sortOrder: divisionSortOrder,
-          page: divisionPage,
-          pageSize: divisionPageSize,
-        })
-      : { rows: [], pagination: null };
-    const pagedCollectionCenter = groupByCollectionCenter
-      ? applySortAndPagination(collectionCenterWiseDetails, {
+  if (groupByCollectionCenter) {
+    if (includePagination) {
+      const collectionCenterSortBy = String(
+        body.collection_center_sort_by ||
+          body.collectionCenterSortBy ||
+          globalSortBy
+      ).trim();
+      const collectionCenterSortOrder = normalizeSortOrder(
+        body.collection_center_sort_order ||
+          body.collectionCenterSortOrder ||
+          globalSortOrder,
+        globalSortOrder
+      );
+      const collectionCenterPage = toPositiveInt(
+        body.collection_center_page ?? body.collectionCenterPage,
+        globalPage
+      );
+      const collectionCenterPageSize = toPositiveInt(
+        body.collection_center_page_size ?? body.collectionCenterPageSize,
+        globalPageSize
+      );
+      const pagedCollectionCenter = applySortAndPagination(
+        collectionCenterWiseDetails,
+        {
           type: "collection_center",
           sortBy: collectionCenterSortBy,
           sortOrder: collectionCenterSortOrder,
           page: collectionCenterPage,
           pageSize: collectionCenterPageSize,
-        })
-      : { rows: [], pagination: null };
-    const pagedScheme = groupByScheme
-      ? applySortAndPagination(schemeWiseDetails, {
-          type: "scheme",
-          sortBy: schemeSortBy,
-          sortOrder: schemeSortOrder,
-          page: schemePage,
-          pageSize: schemePageSize,
-        })
-      : { rows: [], pagination: null };
+        }
+      );
+      data.collection_center_wise_details = pagedCollectionCenter.rows;
+      data.collection_center_wise_pagination = pagedCollectionCenter.pagination;
+    } else {
+      data.collection_center_wise_details = sortRows(collectionCenterWiseDetails, {
+        type: "collection_center",
+        sortBy:
+          body.collection_center_sort_by ||
+          body.collectionCenterSortBy ||
+          globalSortBy,
+        sortOrder:
+          body.collection_center_sort_order ||
+          body.collectionCenterSortOrder ||
+          globalSortOrder,
+      });
+    }
+  }
 
-    const totals = toBreakupResponse(summary);
+  if (groupByScheme) {
+    if (includePagination) {
+      const schemeSortBy = String(
+        body.scheme_sort_by || body.schemeSortBy || globalSortBy
+      ).trim();
+      const schemeSortOrder = normalizeSortOrder(
+        body.scheme_sort_order || body.schemeSortOrder || globalSortOrder,
+        globalSortOrder
+      );
+      const schemePage = toPositiveInt(body.scheme_page ?? body.schemePage, globalPage);
+      const schemePageSize = toPositiveInt(
+        body.scheme_page_size ?? body.schemePageSize,
+        globalPageSize
+      );
+      const pagedScheme = applySortAndPagination(schemeWiseDetails, {
+        type: "scheme",
+        sortBy: schemeSortBy,
+        sortOrder: schemeSortOrder,
+        page: schemePage,
+        pageSize: schemePageSize,
+      });
+      data.scheme_wise_details = pagedScheme.rows;
+      data.scheme_wise_pagination = pagedScheme.pagination;
+    } else {
+      data.scheme_wise_details = sortRows(schemeWiseDetails, {
+        type: "scheme",
+        sortBy: body.scheme_sort_by || body.schemeSortBy || globalSortBy,
+        sortOrder: body.scheme_sort_order || body.schemeSortOrder || globalSortOrder,
+      });
+    }
+  }
 
-    console.log("[bill-amount-breakup-summary-report] patched-response", {
-      department_id: departmentId || null,
-      division_id: divisionId || null,
-      start_date:
-        summary?.filters?.start_date || body.start_date || body.startDate || null,
-      end_date:
-        summary?.filters?.end_date || body.end_date || body.endDate || null,
-      total_bill_generated_count: totals.total_bill_generated_count,
-      total_bill_paid_count: totals.total_bill_paid_count,
-      total_collected_amount_paid_and_partial: totals.total_collected_amount,
-    });
+  console.log("[bill-amount-breakup-summary-report] patched-response", {
+    department_id: departmentId || null,
+    division_id: divisionId || null,
+    start_date:
+      summary?.filters?.start_date || body.start_date || body.startDate || null,
+    end_date:
+      summary?.filters?.end_date || body.end_date || body.endDate || null,
+    total_bill_generated_count: totals.total_bill_generated_count,
+    total_bill_paid_count: totals.total_bill_paid_count,
+    total_collected_amount_paid_and_partial: totals.total_collected_amount,
+  });
 
-    return reply.send({
-      ok: true,
-      data: {
-        filters: summary?.filters || {},
-        totals,
-        ...(groupByDivision
-          ? {
-              division_wise_details: pagedDivision.rows,
-              division_wise_pagination: pagedDivision.pagination,
-            }
-          : {}),
-        ...(groupByCollectionCenter
-          ? {
-              collection_center_wise_details: pagedCollectionCenter.rows,
-              collection_center_wise_pagination: pagedCollectionCenter.pagination,
-            }
-          : {}),
-        ...(groupByScheme
-          ? {
-              scheme_wise_details: pagedScheme.rows,
-              scheme_wise_pagination: pagedScheme.pagination,
-            }
-          : {}),
-      },
-    });
+  return data;
+}
+
+async function createBillAmountBreakupSummaryHandler(req, reply) {
+  try {
+    const data = await buildBillAmountBreakupSummaryResponse(req.body || {});
+    return reply.send({ ok: true, data });
   } catch (err) {
     req.log.error({ err }, "bill-amount-breakup-summary-report failed");
     return reply.code(500).send({
       ok: false,
       message: "Failed to fetch bill amount breakup summary report",
+      error: err?.message || String(err),
+    });
+  }
+}
+
+async function createBillAmountBreakupSummaryPdfHandler(req, reply) {
+  try {
+    const body = req.body || {};
+    const data = await buildBillAmountBreakupSummaryResponse(body, {
+      paginate: false,
+    });
+    const pdf = await createBillAmountBreakupSummaryPdf({
+      body,
+      data,
+      department:
+        body?.departmentId ||
+        body?.department_id ||
+        body?.department ||
+        data?.filters?.departmentId ||
+        data?.filters?.department_id ||
+        data?.filters?.department,
+    });
+    const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
+    reply.header("Content-Type", "application/pdf");
+    reply.header(
+      "Content-Disposition",
+      `attachment; filename=\"bill-amount-breakup-summary-report-${ts}.pdf\"`
+    );
+    return reply.send(pdf);
+  } catch (err) {
+    req.log.error({ err }, "bill-amount-breakup-summary-report-pdf failed");
+    return reply.code(500).send({
+      ok: false,
+      message: "Failed to fetch bill amount breakup summary report pdf",
       error: err?.message || String(err),
     });
   }
@@ -745,6 +810,20 @@ async function routes(fastify, opts) {
       ),
     },
     createBillAmountBreakupSummaryHandler
+  );
+
+  fastify.post(
+    "/bill-amount-breakup-summary-report-pdf",
+    {
+      ...authRoute(
+        {
+          tags: ["Billing Report"],
+          body: reportBody,
+        },
+        "Billing Report"
+      ),
+    },
+    createBillAmountBreakupSummaryPdfHandler
   );
 }
 

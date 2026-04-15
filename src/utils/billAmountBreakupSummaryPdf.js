@@ -56,23 +56,45 @@ function formatCurrency(value) {
   })}`;
 }
 
+function formatDisplayDate(value) {
+  const raw = cleanString(value);
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [year, month, day] = raw.split("-");
+    return `${day}-${month}-${year}`;
+  }
+  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) return raw;
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.valueOf())) return raw;
+
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(parsed);
+}
+
 function formatDateRange(filters = {}, body = {}) {
   const start = firstNonEmpty(
-    filters?.start_date,
     body?.start_date,
     body?.startDate,
     body?.from_date,
-    body?.from
+    body?.from,
+    filters?.start_date
   );
   const end = firstNonEmpty(
-    filters?.end_date,
     body?.end_date,
     body?.endDate,
     body?.to_date,
-    body?.to
+    body?.to,
+    filters?.end_date
   );
-  if (start && end) return `${start} to ${end}`;
-  return start || end || "All";
+  const formattedStart = formatDisplayDate(start);
+  const formattedEnd = formatDisplayDate(end);
+  if (formattedStart && formattedEnd) return `${formattedStart} to ${formattedEnd}`;
+  return formattedStart || formattedEnd || "All";
 }
 
 function resolveHeaderLogoPath(department) {
@@ -123,11 +145,18 @@ function resolvePrimaryName(page = {}) {
   return "Overall Summary";
 }
 
-function buildContextEntries(page = {}, filters = {}, body = {}) {
+function buildContextEntries(page = {}, filters = {}, body = {}, pdfContext = {}) {
   const divisionValue =
     page?.type === "division"
       ? firstNonEmpty(page?.row?.division_name, page?.row?.division_id)
-      : firstNonEmpty(body?.division, body?.division_id, body?.divisionId, filters?.division_id, "All");
+      : firstNonEmpty(
+          pdfContext?.division_name,
+          body?.division,
+          body?.division_id,
+          body?.divisionId,
+          filters?.division_id,
+          "All"
+        );
   const collectionCenterValue =
     page?.type === "collection_center"
       ? firstNonEmpty(
@@ -135,6 +164,7 @@ function buildContextEntries(page = {}, filters = {}, body = {}) {
           page?.row?.collection_center_id
         )
       : firstNonEmpty(
+          pdfContext?.collection_center_name,
           body?.collection_center,
           body?.collectionCenter,
           body?.collection_center_id,
@@ -142,15 +172,10 @@ function buildContextEntries(page = {}, filters = {}, body = {}) {
           filters?.collection_center_id,
           "All"
         );
-  const schemeValue =
-    page?.type === "scheme"
-      ? firstNonEmpty(page?.row?.scheme_name, page?.row?.scheme_id)
-      : firstNonEmpty(body?.scheme, body?.scheme_id, body?.schemeId, filters?.scheme_id, "All");
 
   return [
     { label: "Division", value: divisionValue || "All" },
     { label: "Collection Center", value: collectionCenterValue || "All" },
-    { label: "Scheme", value: schemeValue || "All" },
     { label: "Period", value: formatDateRange(filters, body) },
   ];
 }
@@ -253,7 +278,7 @@ function drawHeader(
     doc.page.width - doc.page.margins.left - doc.page.margins.right;
   const gap = 10;
   const chipY = pillY + 42;
-  const chipWidth = (availableWidth - gap * 3) / 4;
+  const chipWidth = (availableWidth - gap * 2) / 3;
 
   contextEntries.forEach((entry, index) => {
     const x = doc.page.margins.left + index * (chipWidth + gap);
@@ -399,6 +424,7 @@ function buildSections(row = {}) {
 export async function createBillAmountBreakupSummaryPdf({
   body = {},
   data = {},
+  pdfContext = {},
   department,
 } = {}) {
   const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 28 });
@@ -428,7 +454,7 @@ export async function createBillAmountBreakupSummaryPdf({
       watermarkPath,
       pageNumber: index + 1,
       totalPages: pages.length,
-      contextEntries: buildContextEntries(page, filters, body),
+      contextEntries: buildContextEntries(page, filters, body, pdfContext),
     });
 
     for (const section of buildSections(page?.row || data?.totals || {})) {

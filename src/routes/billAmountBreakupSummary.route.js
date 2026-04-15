@@ -404,6 +404,67 @@ async function fetchMasterRows({ type = "", department_id = "", division_id = ""
   return fetchSchemesByScope({ department_id: dep, division_id: div });
 }
 
+function findNameById(rows = [], { idKey = "", nameKey = "", id = "" } = {}) {
+  const targetId = cleanString(id);
+  if (!targetId) return "";
+  const match = (rows || []).find(
+    (row) => cleanString(row?.[idKey]) === targetId
+  );
+  return cleanString(match?.[nameKey]);
+}
+
+async function resolveBillAmountBreakupPdfContext(body = {}) {
+  const departmentId = cleanString(
+    body.department_id || body.departmentId || body.department
+  );
+  const divisionId = cleanString(body.division_id || body.divisionId || body.division);
+  const collectionCenterId = cleanString(
+    body.collection_center_id ||
+      body.collectionCenterId ||
+      body.collection_center ||
+      body.collectionCenter
+  );
+
+  const divisionNameFromBody = cleanString(body.division);
+  const collectionCenterNameFromBody = cleanString(
+    body.collection_center || body.collectionCenter
+  );
+
+  const [divisionRows, collectionCenterRows] = await Promise.all([
+    !divisionNameFromBody && departmentId && divisionId
+      ? fetchMasterRows({
+          type: "division",
+          department_id: departmentId,
+          division_id: divisionId,
+        })
+      : Promise.resolve([]),
+    !collectionCenterNameFromBody && collectionCenterId && (departmentId || divisionId)
+      ? fetchMasterRows({
+          type: "collection_center",
+          department_id: departmentId,
+          division_id: divisionId,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  return {
+    division_name:
+      divisionNameFromBody ||
+      findNameById(divisionRows, {
+        idKey: "division_id",
+        nameKey: "division_name",
+        id: divisionId,
+      }),
+    collection_center_name:
+      collectionCenterNameFromBody ||
+      findNameById(collectionCenterRows, {
+        idKey: "collection_center_id",
+        nameKey: "collection_center_name",
+        id: collectionCenterId,
+      }),
+  };
+}
+
 export function normalizeScopedGroupRows({
   type = "",
   summaryRows = [],
@@ -767,9 +828,11 @@ async function createBillAmountBreakupSummaryPdfHandler(req, reply) {
     const data = await buildBillAmountBreakupSummaryResponse(body, {
       paginate: false,
     });
+    const pdfContext = await resolveBillAmountBreakupPdfContext(body);
     const pdf = await createBillAmountBreakupSummaryPdf({
       body,
       data,
+      pdfContext,
       department:
         body?.departmentId ||
         body?.department_id ||

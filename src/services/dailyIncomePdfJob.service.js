@@ -65,7 +65,10 @@ export async function runDailyIncomePdfJob(jobId, logger) {
       error: null,
     });
 
-    const payload = buildDailyIncomePayload(job.payload || {});
+    const payload = {
+      ...(job.payload || {}),
+      ...buildDailyIncomePayload(job.payload || {}),
+    };
     const { pdf, totalRecords } = await generateDailyIncomePdfBuffer(payload, {
       rpcTimeoutMs: EXPORT_JOB_RPC_TIMEOUT_MS,
       queryMaxTimeMs: EXPORT_JOB_QUERY_MAX_TIME_MS,

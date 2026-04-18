@@ -5,6 +5,7 @@ import {
   buildDailyIncomePayload,
   generateDailyIncomePdfBuffer,
   paymentModes,
+  transactionStatuses,
   transactionTypes,
 } from "../services/dailyIncomeReport.service.js";
 import {
@@ -20,6 +21,7 @@ const dailyIncomeBody = {
   properties: {
     start_date: { type: "string", format: "date" },
     end_date: { type: "string", format: "date" },
+    report_title: { type: "string" },
     collection_center: { type: "string" },
     collection_center_id: { type: "string" },
     division: { type: "string" },
@@ -60,6 +62,7 @@ const dailyIncomeBody = {
       ],
     },
     type: { type: "string", enum: transactionTypes },
+    status: { type: "string", enum: transactionStatuses },
   },
 };
 
@@ -94,7 +97,10 @@ function serializeDailyIncomePdfJob(job) {
 }
 
 async function createDailyIncomeHandler(req, reply) {
-  const payload = buildDailyIncomePayload(req.body || {});
+  const payload = {
+    ...(req.body || {}),
+    ...buildDailyIncomePayload(req.body || {}),
+  };
 
   try {
     const rpc = await getDailyIncomeReportRPC(payload);
@@ -110,7 +116,10 @@ async function createDailyIncomeHandler(req, reply) {
 }
 
 async function createDailyIncomePdfHandler(req, reply) {
-  const payload = buildDailyIncomePayload(req.body || {});
+  const payload = {
+    ...(req.body || {}),
+    ...buildDailyIncomePayload(req.body || {}),
+  };
 
   try {
     const { pdf } = await generateDailyIncomePdfBuffer(payload);
@@ -131,9 +140,36 @@ async function createDailyIncomePdfHandler(req, reply) {
   }
 }
 
+async function createCancelledTransactionsHandler(req, reply) {
+  const payload = {
+    ...(req.body || {}),
+    ...buildDailyIncomePayload({
+      ...(req.body || {}),
+      status: "cancelled",
+      report_title:
+        req.body?.report_title || "Cancelled Transactions Report",
+    }),
+  };
+
+  try {
+    const rpc = await getDailyIncomeReportRPC(payload);
+    return reply.send({ ok: true, data: rpc });
+  } catch (err) {
+    req.log.error({ err }, "cancelled-transactions-report failed");
+    return reply.code(500).send({
+      ok: false,
+      message: "Failed to fetch cancelled transactions report",
+      error: err?.message || String(err),
+    });
+  }
+}
+
 async function createDailyIncomePdfJobHandler(req, reply) {
   try {
-    const payload = buildDailyIncomePayload(req.body || {});
+    const payload = {
+      ...(req.body || {}),
+      ...buildDailyIncomePayload(req.body || {}),
+    };
     const job = await DailyIncomePdfJob.create({
       status: "queued",
       payload,
@@ -257,6 +293,20 @@ async function routes(fastify, opts) {
       ),
     },
     createDailyIncomePdfHandler
+  );
+
+  fastify.post(
+    "/cancelled-transactions-report",
+    {
+      ...authRoute(
+        {
+          tags: ["Cancelled Transactions Report"],
+          body: dailyIncomeBody,
+        },
+        "Cancelled Transactions Report"
+      ),
+    },
+    createCancelledTransactionsHandler
   );
 
   fastify.post(

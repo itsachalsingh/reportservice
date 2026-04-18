@@ -59,6 +59,26 @@ function resolveDepartmentName(...values) {
   return "-";
 }
 
+function resolveHeaderLogoPath(department) {
+  const token = sanitizeCellText(department).toUpperCase();
+  if (token.includes("SANSTHAN") || token === "UJS" || token === "J") {
+    return asset("logo2.png");
+  }
+  return asset("logo3.jpg");
+}
+
+function toDateOnlyDisplay(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "-";
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  });
+}
+
 function toAmount(value) {
   const amount = Number(value);
   return Number.isFinite(amount) ? amount : 0;
@@ -187,7 +207,6 @@ export async function createDailyIncomePdf({
     doc.on("end", () => resolve(Buffer.concat(buffers)));
   });
 
-  const logoPath = asset("header-logo.png");
   const watermarkPath = asset("watermark.png");
 
   const generatedAt = toDisplayDate(new Date());
@@ -215,6 +234,12 @@ export async function createDailyIncomePdf({
     payload?.collection_center ||
     firstDetail?.collection_center ||
     "-";
+  const logoPath = resolveHeaderLogoPath(departmentName);
+  const reportTitle = headerValue(payload?.report_title || "Daily Collection Report");
+  const startDate = toDateOnlyDisplay(payload?.start_date || payload?.from_date);
+  const endDate = toDateOnlyDisplay(payload?.end_date || payload?.to_date);
+  const dateRangeText =
+    startDate !== "-" && endDate !== "-" ? `${startDate} to ${endDate}` : startDate;
 
   function drawHeader() {
     if (fs.existsSync(watermarkPath)) {
@@ -238,7 +263,14 @@ export async function createDailyIncomePdf({
     doc
       .fontSize(16)
       .font(fontName("bold"))
-      .text("Daily Collection Report", 0, doc.page.margins.top - 2, {
+      .text(reportTitle, 0, doc.page.margins.top - 2, {
+        align: "center",
+      });
+
+    doc
+      .fontSize(11)
+      .font(fontName("bold"))
+      .text(headerValue(divisionName), 0, doc.page.margins.top + 15, {
         align: "center",
       });
 
@@ -273,26 +305,20 @@ export async function createDailyIncomePdf({
         }
       );
 
-    const fromDate = payload?.from_date
-      ? toDisplayDate(payload.from_date).split(" ")[0]
-      : payload?.start_date
-      ? toDisplayDate(payload.start_date).split(" ")[0]
-      : "-";
-
     doc
       .fontSize(9)
       .font(fontName("regular"))
       .text(
-        `Date: ${fromDate}  Generated At: ${generatedAt}`,
+        `Date: ${dateRangeText}  Generated At: ${generatedAt}`,
         0,
-        doc.page.margins.top + 18,
+        doc.page.margins.top + 29,
         { align: "center" }
       );
   }
 
   drawHeader();
 
-  let y = doc.page.margins.top + 50;
+  let y = doc.page.margins.top + 60;
 
   /* summary */
 

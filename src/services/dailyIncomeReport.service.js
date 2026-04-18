@@ -14,6 +14,15 @@ export const paymentModes = [
 ];
 
 export const transactionTypes = ["form", "bill", "service", "demand", "all"];
+export const transactionStatuses = [
+  "pending",
+  "completed",
+  "failed",
+  "dishonor",
+  "cancelled",
+  "canceled",
+  "all",
+];
 
 function parsePositiveInt(value, fallback = null) {
   const parsed = Number(value);
@@ -65,6 +74,7 @@ export function buildDailyIncomePayload(input = {}) {
   return {
     start_date: input?.start_date,
     end_date: input?.end_date,
+    report_title: input?.report_title || null,
     collection_center:
       input?.collection_center || input?.collection_center_id || null,
     division: input?.division || input?.division_id || null,
@@ -78,6 +88,7 @@ export function buildDailyIncomePayload(input = {}) {
     limit: input?.limit,
     payment_methods: input?.payment_methods || input?.payment_method || null,
     types: input?.types || input?.type || null,
+    status: input?.status || input?.transaction_status || null,
     area_type: input?.area_type || null,
   };
 }

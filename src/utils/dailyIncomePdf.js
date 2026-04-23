@@ -5,6 +5,7 @@ import path from "path";
 const ASSETS_DIR = path.resolve(process.cwd(), "assets");
 const asset = (name) => path.join(ASSETS_DIR, name);
 const fontAsset = (name) => path.join(ASSETS_DIR, "fonts", name);
+const WIDE_LANDSCAPE_PAGE = [1200, 595.28];
 
 function money(value) {
   const amount = Math.round(Number(value) || 0);
@@ -37,6 +38,22 @@ function headerValue(value) {
 
 function sanitizeCellText(value) {
   return String(value ?? "").replace(/\r?\n/g, " ").trim();
+}
+
+function firstDisplayText(...values) {
+  for (const value of values) {
+    const text = sanitizeCellText(value);
+    if (!text || text.toLowerCase() === "all" || isObjectIdLike(text)) continue;
+    return text;
+  }
+  return null;
+}
+
+function hasRequestedHeaderFilter(...values) {
+  return values.some((value) => {
+    const text = sanitizeCellText(value);
+    return Boolean(text && text.toLowerCase() !== "all");
+  });
 }
 
 function isObjectIdLike(value) {
@@ -92,6 +109,17 @@ function getDisplayedAdvanceAmount(row = {}) {
   return toAmount(row.excess_amount ?? row.advance);
 }
 
+function getDisplayedPreviousAdvanceAmount(row = {}) {
+  return toAmount(
+    row.previous_advance ??
+      row.previousAdvance ??
+      row.adv_wb_chrg ??
+      row.advWBCharge ??
+      row.advanceused ??
+      row.advance_used
+  );
+}
+
 function buildDetailTotals(details = []) {
   return details.reduce(
     (totals, row) => ({
@@ -104,6 +132,8 @@ function buildDetailTotals(details = []) {
       arrears: totals.arrears + toAmount(row.arrears),
       total: totals.total + toAmount(row.bill_amount),
       paid: totals.paid + getDisplayedPaidAmount(row),
+      previousAdvance:
+        totals.previousAdvance + getDisplayedPreviousAdvanceAmount(row),
       advance: totals.advance + getDisplayedAdvanceAmount(row),
       balance: totals.balance + toAmount(row.balance),
     }),
@@ -117,6 +147,7 @@ function buildDetailTotals(details = []) {
       arrears: 0,
       total: 0,
       paid: 0,
+      previousAdvance: 0,
       advance: 0,
       balance: 0,
     }
@@ -195,8 +226,7 @@ export async function createDailyIncomePdf({
   pagination = {},
 } = {}) {
   const doc = new PDFDocument({
-    size: "A4",
-    layout: "landscape",
+    size: WIDE_LANDSCAPE_PAGE,
     margin: 24,
   });
 
@@ -220,20 +250,38 @@ export async function createDailyIncomePdf({
     summary?.filters?.department,
     firstDetail?.department
   );
-  const divisionName =
-    summary?.filters?.division_name ||
-    payload?.division_name ||
-    summary?.filters?.division ||
-    payload?.division ||
-    firstDetail?.division ||
-    "-";
-  const collectionCenterName =
-    summary?.filters?.collection_center_name ||
-    payload?.collection_center_name ||
-    summary?.filters?.collection_center ||
-    payload?.collection_center ||
-    firstDetail?.collection_center ||
-    "-";
+  const hasDivisionFilter = hasRequestedHeaderFilter(
+    payload?.division_name,
+    payload?.division,
+    payload?.division_id,
+    summary?.filters?.division
+  );
+  const hasCollectionCenterFilter = hasRequestedHeaderFilter(
+    payload?.collection_center_name,
+    payload?.collection_center,
+    payload?.collection_center_id,
+    payload?.collectionCenter,
+    summary?.filters?.collection_center
+  );
+  const divisionName = hasDivisionFilter
+    ? firstDisplayText(
+        summary?.filters?.division_name,
+        payload?.division_name,
+        summary?.filters?.division,
+        payload?.division,
+        firstDetail?.division
+      ) || "-"
+    : "-";
+  const collectionCenterName = hasCollectionCenterFilter
+    ? firstDisplayText(
+        summary?.filters?.collection_center_name,
+        payload?.collection_center_name,
+        summary?.filters?.collection_center,
+        payload?.collection_center,
+        payload?.collectionCenter,
+        firstDetail?.collection_center
+      ) || "-"
+    : "-";
   const logoPath = resolveHeaderLogoPath(departmentName);
   const reportTitle = headerValue(payload?.report_title || "Daily Collection Report");
   const startDate = toDateOnlyDisplay(payload?.start_date || payload?.from_date);
@@ -241,7 +289,7 @@ export async function createDailyIncomePdf({
   const dateRangeText =
     startDate !== "-" && endDate !== "-" ? `${startDate} to ${endDate}` : startDate;
 
-  function drawHeader() {
+  function drawHeader(pageDivisionName = divisionName) {
     if (fs.existsSync(watermarkPath)) {
       doc.save();
       doc.opacity(0.06);
@@ -270,7 +318,7 @@ export async function createDailyIncomePdf({
     doc
       .fontSize(11)
       .font(fontName("bold"))
-      .text(headerValue(divisionName), 0, doc.page.margins.top + 15, {
+      .text(headerValue(pageDivisionName), 0, doc.page.margins.top + 15, {
         align: "center",
       });
 
@@ -287,7 +335,7 @@ export async function createDailyIncomePdf({
         }
       )
       .text(
-        `Division: ${headerValue(divisionName)}`,
+        `Division: ${headerValue(pageDivisionName)}`,
         doc.page.margins.left,
         doc.page.margins.top - 2,
         {
@@ -316,8 +364,6 @@ export async function createDailyIncomePdf({
       );
   }
 
-  drawHeader();
-
   let y = doc.page.margins.top + 60;
 
   /* summary */
@@ -333,28 +379,30 @@ export async function createDailyIncomePdf({
     `Cash: Rs ${money(summary?.by_payment_method?.cash?.amount)}`,
   ];
 
-  doc
-    .fontSize(10)
-    .font(fontName("bold"))
-    .text(totalPaymentText, doc.page.margins.left, y, {
-      width: availableWidth,
-      align: "left",
-    });
-
-  y += 14;
-
   const paymentMethodColWidth = availableWidth / paymentMethodItems.length;
 
-  paymentMethodItems.forEach((text, i) => {
+  function drawSummary() {
     doc
-      .fontSize(9)
+      .fontSize(10)
       .font(fontName("bold"))
-      .text(text, doc.page.margins.left + paymentMethodColWidth * i, y, {
-        width: paymentMethodColWidth,
+      .text(totalPaymentText, doc.page.margins.left, y, {
+        width: availableWidth,
+        align: "left",
       });
-  });
 
-  y += 24;
+    y += 14;
+
+    paymentMethodItems.forEach((text, i) => {
+      doc
+        .fontSize(9)
+        .font(fontName("bold"))
+        .text(text, doc.page.margins.left + paymentMethodColWidth * i, y, {
+          width: paymentMethodColWidth,
+        });
+    });
+
+    y += 24;
+  }
 
   /* column definition */
 
@@ -388,6 +436,8 @@ export async function createDailyIncomePdf({
 
     { key: "paid", label: "Paid", width: 85 },
 
+    { key: "previousAdvance", label: "Previous Advance", width: 95 },
+
     { key: "advance", label: "Advance", width: 85 },
 
     { key: "balance", label: "Balance", width: 85 },
@@ -406,6 +456,7 @@ export async function createDailyIncomePdf({
     "arrears",
     "total",
     "paid",
+    "previousAdvance",
     "advance",
     "balance",
   ]);
@@ -528,6 +579,7 @@ export async function createDailyIncomePdf({
         "late",
         "disc",
         "arrears",
+        "previousAdvance",
         "advance",
         "balance",
       ].includes(col.key)
@@ -558,15 +610,37 @@ export async function createDailyIncomePdf({
     y += rowHeight;
   }
 
-  drawRow(
-    Object.fromEntries(columns.map((c) => [c.key, c.label])),
-    { isHeader: true, isTableHeader: true }
-  );
-
   const pageBottom = () => doc.page.height - doc.page.margins.bottom - 20;
 
-  details.forEach((row, i) => {
-    const rowData = {
+  const tableHeaderRow = Object.fromEntries(columns.map((c) => [c.key, c.label]));
+  const tableHeaderHeight = estimateRowHeight(tableHeaderRow, {
+    isHeader: true,
+    isTableHeader: true,
+  });
+  const firstPageRowsStartY = doc.page.margins.top + 60 + 38 + tableHeaderHeight;
+  const nextPageRowsStartY = doc.page.margins.top + 60 + tableHeaderHeight;
+
+  function getPageDivisionName(pageRows = []) {
+    if (hasDivisionFilter) return divisionName;
+
+    const names = [];
+    const seen = new Set();
+    for (const pageRow of pageRows) {
+      const name = firstDisplayText(pageRow?.source?.division);
+      if (!name) continue;
+
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      names.push(name);
+    }
+
+    return names.length ? names.join(", ") : "-";
+  }
+
+  function buildDetailRowData(row, i) {
+    return {
       index: i + 1,
 
       consumer: `${
@@ -587,6 +661,11 @@ export async function createDailyIncomePdf({
 
       paid: formatNumericCell("paid", row.paid_amount ?? row.amount),
 
+      previousAdvance: formatNumericCell(
+        "previousAdvance",
+        getDisplayedPreviousAdvanceAmount(row)
+      ),
+
       water: formatNumericCell("water", row.water_charges),
 
       sewer: formatNumericCell("sewer", row.sewer_charges),
@@ -601,23 +680,44 @@ export async function createDailyIncomePdf({
 
       arrears: formatNumericCell("arrears", row.arrears),
 
-      advance: formatNumericCell("advance", row.excess_amount),
+      advance: formatNumericCell("advance", getDisplayedAdvanceAmount(row)),
 
       balance: formatNumericCell("balance", row.balance),
     };
+  }
 
+  const detailPages = [];
+  let currentPageRows = [];
+  let currentY = firstPageRowsStartY;
+
+  details.forEach((row, i) => {
+    const rowData = buildDetailRowData(row, i);
     const nextHeight = estimateRowHeight(rowData);
-    if (y + nextHeight > pageBottom()) {
-      doc.addPage();
-      drawHeader();
-      y = doc.page.margins.top + 60;
-      drawRow(
-        Object.fromEntries(columns.map((c) => [c.key, c.label])),
-        { isHeader: true, isTableHeader: true }
-      );
+    if (currentPageRows.length && currentY + nextHeight > pageBottom()) {
+      detailPages.push(currentPageRows);
+      currentPageRows = [];
+      currentY = nextPageRowsStartY;
     }
 
-    drawRow(rowData);
+    currentPageRows.push({ rowData, source: row });
+    currentY += nextHeight;
+  });
+
+  if (currentPageRows.length || !detailPages.length) {
+    detailPages.push(currentPageRows);
+  }
+
+  detailPages.forEach((pageRows, pageIndex) => {
+    if (pageIndex > 0) doc.addPage();
+
+    drawHeader(getPageDivisionName(pageRows));
+    y = doc.page.margins.top + 60;
+    if (pageIndex === 0) drawSummary();
+    drawRow(tableHeaderRow, { isHeader: true, isTableHeader: true });
+
+    pageRows.forEach((pageRow) => {
+      drawRow(pageRow.rowData);
+    });
   });
 
   const totalsRow = Object.assign(

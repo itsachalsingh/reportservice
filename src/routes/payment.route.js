@@ -14,6 +14,8 @@ import {
 } from "../services/dailyIncomePdfJob.service.js";
 import { getDailyIncomeReportRPC } from "../utils/rpcClient.js";
 
+const transactionTypeFilterValues = [...transactionTypes, ""];
+
 const dailyIncomeBody = {
   type: "object",
   required: ["start_date", "end_date"],
@@ -21,9 +23,12 @@ const dailyIncomeBody = {
   properties: {
     start_date: { type: "string", format: "date" },
     end_date: { type: "string", format: "date" },
+    fromDate: { type: "string", format: "date" },
+    toDate: { type: "string", format: "date" },
     report_title: { type: "string" },
     collection_center: { type: "string" },
     collection_center_id: { type: "string" },
+    collectionCenter: { type: "string" },
     division: { type: "string" },
     division_id: { type: "string" },
     scheme: { type: "string" },
@@ -31,6 +36,8 @@ const dailyIncomeBody = {
     department: { type: "string" },
     department_id: { type: "string" },
     department_name: { type: "string" },
+    district_id: { type: "string" },
+    ward_id: { type: "string" },
     revenue_unit_id: { type: "string" },
     ledger_id: { type: "string" },
     lane_id: { type: "string" },
@@ -55,13 +62,13 @@ const dailyIncomeBody = {
       oneOf: [
         {
           type: "array",
-          items: { type: "string", enum: transactionTypes },
+          items: { type: "string", enum: transactionTypeFilterValues },
           minItems: 1,
         },
-        { type: "string", enum: transactionTypes },
+        { type: "string", enum: transactionTypeFilterValues },
       ],
     },
-    type: { type: "string", enum: transactionTypes },
+    type: { type: "string", enum: transactionTypeFilterValues },
     status: { type: "string", enum: transactionStatuses },
   },
 };

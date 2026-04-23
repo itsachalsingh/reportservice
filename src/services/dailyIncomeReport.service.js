@@ -1,6 +1,7 @@
 import { getDailyIncomeReportRPC } from "../utils/rpcClient.js";
 import { createDailyIncomePdf } from "../utils/dailyIncomePdf.js";
 import { getConnectionByConsumerCode } from "../utils/grpc/connectionClient.js";
+import { getDivisionById } from "../utils/grpc/divisionClient.js";
 
 export const paymentModes = [
   "cash",
@@ -23,6 +24,24 @@ export const transactionStatuses = [
   "canceled",
   "all",
 ];
+
+export function normalizeTransactionTypes(input = {}) {
+  const rawTypes = input?.types ?? input?.type;
+
+  if (Array.isArray(rawTypes)) {
+    const types = rawTypes
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean);
+
+    if (!types.length || types.includes("all")) return "all";
+    return types;
+  }
+
+  if (rawTypes === undefined || rawTypes === null) return null;
+
+  const type = String(rawTypes).trim();
+  return type || "all";
+}
 
 function parsePositiveInt(value, fallback = null) {
   const parsed = Number(value);
@@ -70,13 +89,37 @@ function firstText(...values) {
   return null;
 }
 
+function isObjectIdLike(value) {
+  return /^[a-f0-9]{24}$/i.test(String(value ?? "").trim());
+}
+
+function firstDisplayText(...values) {
+  for (const value of values) {
+    const text = firstText(value);
+    if (!text || text.toLowerCase() === "all" || isObjectIdLike(text)) continue;
+    return text;
+  }
+  return null;
+}
+
+function firstObjectId(...values) {
+  for (const value of values) {
+    const text = firstText(value);
+    if (text && isObjectIdLike(text)) return text;
+  }
+  return null;
+}
+
 export function buildDailyIncomePayload(input = {}) {
   return {
-    start_date: input?.start_date,
-    end_date: input?.end_date,
+    start_date: input?.start_date || input?.fromDate,
+    end_date: input?.end_date || input?.toDate,
     report_title: input?.report_title || null,
     collection_center:
-      input?.collection_center || input?.collection_center_id || null,
+      input?.collection_center ||
+      input?.collection_center_id ||
+      input?.collectionCenter ||
+      null,
     division: input?.division || input?.division_id || null,
     scheme: input?.scheme || input?.scheme_id || null,
     department: input?.department || input?.department_id || null,
@@ -87,7 +130,7 @@ export function buildDailyIncomePayload(input = {}) {
     page: input?.page,
     limit: input?.limit,
     payment_methods: input?.payment_methods || input?.payment_method || null,
-    types: input?.types || input?.type || null,
+    types: normalizeTransactionTypes(input),
     status: input?.status || input?.transaction_status || null,
     area_type: input?.area_type || null,
   };
@@ -160,6 +203,82 @@ export async function enrichDetailsWithConnectionAddress(details = []) {
 
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
   return enriched;
+}
+
+async function resolveDivisionNameById(divisionId) {
+  if (!divisionId) return null;
+
+  try {
+    const response = await getDivisionById(divisionId);
+    return firstDisplayText(response?.division?.name);
+  } catch {
+    return null;
+  }
+}
+
+async function enrichDetailsWithDivisionNames(details = []) {
+  if (!Array.isArray(details) || !details.length) return details;
+
+  const enriched = details.map((row) => ({ ...row }));
+  const divisionIds = [
+    ...new Set(
+      enriched
+        .map((row) => firstObjectId(row?.division_id, row?.division))
+        .filter(Boolean)
+    ),
+  ];
+
+  if (!divisionIds.length) return enriched;
+
+  const entries = await Promise.all(
+    divisionIds.map(async (divisionId) => [
+      divisionId,
+      await resolveDivisionNameById(divisionId),
+    ])
+  );
+  const namesById = new Map(entries.filter(([, name]) => Boolean(name)));
+
+  for (const row of enriched) {
+    const divisionId = firstObjectId(row?.division_id, row?.division);
+    const divisionName = divisionId ? namesById.get(divisionId) : null;
+    if (divisionName) row.division = divisionName;
+  }
+
+  return enriched;
+}
+
+async function resolveSelectedDivisionHeaderForPdf(payload = {}, summary = {}) {
+  const filters = summary?.filters || {};
+  const displayName = firstDisplayText(
+    payload?.division_name,
+    filters?.division_name,
+    payload?.division,
+    filters?.division
+  );
+  if (displayName) return displayName;
+
+  const selectedDivisionId = firstObjectId(
+    payload?.division_id,
+    payload?.division,
+    filters?.division
+  );
+  if (selectedDivisionId) {
+    const selectedDivisionName = await resolveDivisionNameById(selectedDivisionId);
+    if (selectedDivisionName) return selectedDivisionName;
+  }
+
+  return null;
+}
+
+async function resolvePdfHeaderContext(payload = {}, summary = {}) {
+  const divisionName = await resolveSelectedDivisionHeaderForPdf(payload, summary);
+
+  if (!divisionName) return payload;
+
+  return {
+    ...payload,
+    division_name: divisionName,
+  };
 }
 
 export async function fetchDailyIncomeReportForPdf(
@@ -283,12 +402,17 @@ export async function generateDailyIncomePdfBuffer(payload, options = {}) {
   }
 
   const reportData = rpc?.data || {};
-  const enrichedDetails = await enrichDetailsWithConnectionAddress(
+  const addressEnrichedDetails = await enrichDetailsWithConnectionAddress(
     Array.isArray(reportData?.details) ? reportData.details : []
+  );
+  const enrichedDetails = await enrichDetailsWithDivisionNames(addressEnrichedDetails);
+  const pdfPayload = await resolvePdfHeaderContext(
+    payload,
+    reportData?.summary || {}
   );
 
   const pdf = await createDailyIncomePdf({
-    payload,
+    payload: pdfPayload,
     summary: reportData?.summary || {},
     details: enrichedDetails,
     pagination: reportData?.pagination || {},

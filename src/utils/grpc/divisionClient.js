@@ -51,3 +51,17 @@ export function getDivisionsByDepartment(payload = {}) {
     });
   });
 }
+
+export function getDivisionById(id) {
+  const client = getClient();
+  return new Promise((resolve, reject) => {
+    client.getDivisionById({ id: String(id || "") }, (error, response) => {
+      if (error) {
+        const err = new Error(error?.message || "Failed to fetch division");
+        err.code = error.code;
+        return reject(err);
+      }
+      resolve(response || {});
+    });
+  });
+}

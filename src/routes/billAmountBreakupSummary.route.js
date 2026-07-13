@@ -44,6 +44,10 @@ const reportBody = {
     bill_month: { type: "string" },
     billMonth: { type: "string" },
     month: { type: "string" },
+    startMonth: { type: "string" },
+    endMonth: { type: "string" },
+    startYear: { type: "string" },
+    endYear: { type: "string" },
     group_by_division: { type: "boolean" },
     groupByDivision: { type: "boolean" },
     group_by_collection_center: { type: "boolean" },
@@ -115,6 +119,50 @@ function firstNonEmpty(...values) {
   return "";
 }
 
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function monthIndex(value) {
+  const raw = cleanString(value).toLowerCase();
+  if (!raw) return -1;
+  return MONTHS.findIndex((month) => month.toLowerCase() === raw);
+}
+
+function normalizeYear(value) {
+  const raw = cleanString(value);
+  return /^\d{4}$/.test(raw) ? Number(raw) : 0;
+}
+
+function normalizeMonthRangePayload(body = {}) {
+  const startMonthIndex = monthIndex(body.startMonth);
+  const endMonthIndex = monthIndex(body.endMonth);
+  const startYear = normalizeYear(body.startYear);
+  const endYear = normalizeYear(body.endYear || body.startYear);
+
+  if (startMonthIndex < 0 || endMonthIndex < 0 || !startYear || !endYear) {
+    return { ...body };
+  }
+
+  const billMonth = `${MONTHS[startMonthIndex]} ${startYear} - ${MONTHS[endMonthIndex]} ${endYear}`;
+  return {
+    ...body,
+    bill_month: firstNonEmpty(body.bill_month, body.billMonth, body.month, billMonth),
+    billMonth: firstNonEmpty(body.billMonth, body.bill_month, body.month, billMonth),
+  };
+}
+
 function toBreakupResponse(summary = {}) {
   const data = summary?.data || {};
   const totalBillGeneratedCount = toNum(data?.total_bill_generated_count);
@@ -130,10 +178,28 @@ function toBreakupResponse(summary = {}) {
     toNum(data?.total_meter_rent_arrear_rounded_rupees) +
     toNum(data?.total_late_fee_arrear_rounded_rupees) +
     toNum(data?.total_late_fine_rounded_rupees);
+  const totalAdvance =
+    toNum(data?.total_advance_rounded_rupees) +
+    toNum(data?.total_advance_used_rounded_rupees);
 
   return {
     total_bill_generated_count: totalBillGeneratedCount,
     total_bill_paid_count: totalBillPaidCount,
+    total_bill_cancelled_count: toNum(data?.total_bill_cancelled_count),
+    total_bill_cancelled_amount: toNum(
+      data?.total_bill_cancelled_amount_rounded_rupees ??
+        data?.total_bill_cancelled_amount
+    ),
+    total_bill_waived_off_count: toNum(data?.total_bill_waived_off_count),
+    total_bill_waived_off_amount: toNum(
+      data?.total_bill_waived_off_amount_rounded_rupees ??
+        data?.total_bill_waived_off_amount
+    ),
+    total_bill_wavied_off_count: toNum(data?.total_bill_waived_off_count),
+    total_bill_wavied_off_amount: toNum(
+      data?.total_bill_waived_off_amount_rounded_rupees ??
+        data?.total_bill_waived_off_amount
+    ),
     total_amount: toNum(data?.total_bill_generated_value_rounded_rupees),
     total_collected_amount: toNum(data?.total_bill_collected_rounded_rupees),
     total_water_charges: toNum(data?.total_water_charges_rounded_rupees),
@@ -144,10 +210,11 @@ function toBreakupResponse(summary = {}) {
     total_sewer_arrear: toNum(data?.total_sewer_arrear_rounded_rupees),
     total_other_arrear: toNum(data?.total_other_arrear_rounded_rupees),
     total_meter_rent_arrear: toNum(data?.total_meter_rent_arrear_rounded_rupees),
+    total_late_fine_arrear: toNum(data?.total_late_fee_arrear_rounded_rupees),
     total_late_fine: toNum(data?.total_late_fine_rounded_rupees),
     total_discount: toNum(data?.total_discount_rounded_rupees),
     total_arrear: toNum(data?.total_arrear_rounded_rupees) || totalArrearFallback,
-    total_advance: toNum(data?.total_advance_rounded_rupees),
+    total_advance: totalAdvance,
     waterPaid: toNum(data?.total_water_paid_rounded_rupees),
     meterPaid: toNum(data?.total_meter_paid_rounded_rupees),
     sewerPaid: toNum(data?.total_sewer_paid_rounded_rupees),
@@ -232,6 +299,12 @@ function sortRows(rows = [], { sortBy = "total_amount", sortOrder = "desc", type
   const numericSortKeys = new Set([
     "total_bill_generated_count",
     "total_bill_paid_count",
+    "total_bill_cancelled_count",
+    "total_bill_cancelled_amount",
+    "total_bill_waived_off_count",
+    "total_bill_waived_off_amount",
+    "total_bill_wavied_off_count",
+    "total_bill_wavied_off_amount",
     "total_amount",
     "total_collected_amount",
     "total_water_charges",
@@ -242,6 +315,7 @@ function sortRows(rows = [], { sortBy = "total_amount", sortOrder = "desc", type
     "total_sewer_arrear",
     "total_other_arrear",
     "total_meter_rent_arrear",
+    "total_late_fine_arrear",
     "total_late_fine",
     "total_arrear",
     "total_advance",
@@ -557,21 +631,31 @@ async function buildBillAmountBreakupSummaryResponse(
   body = {},
   options = {}
 ) {
+  const normalizedBody = normalizeMonthRangePayload(body);
   const includePagination = options?.paginate !== false;
-  const groupByDivision = body.group_by_division ?? body.groupByDivision ?? true;
+  const groupByDivision =
+    normalizedBody.group_by_division ?? normalizedBody.groupByDivision ?? true;
   const groupByCollectionCenter =
-    body.group_by_collection_center ?? body.groupByCollectionCenter ?? true;
-  const groupByScheme = body.group_by_scheme ?? body.groupByScheme ?? true;
-  const globalSortBy = String(body.sort_by || body.sortBy || "total_amount").trim();
+    normalizedBody.group_by_collection_center ??
+    normalizedBody.groupByCollectionCenter ??
+    true;
+  const groupByScheme =
+    normalizedBody.group_by_scheme ?? normalizedBody.groupByScheme ?? true;
+  const globalSortBy = String(
+    normalizedBody.sort_by || normalizedBody.sortBy || "total_amount"
+  ).trim();
   const globalSortOrder = normalizeSortOrder(
-    body.sort_order || body.sortOrder || "desc",
+    normalizedBody.sort_order || normalizedBody.sortOrder || "desc",
     "desc"
   );
-  const globalPage = toPositiveInt(body.page, 1);
-  const globalPageSize = toPositiveInt(body.page_size ?? body.pageSize, 50);
+  const globalPage = toPositiveInt(normalizedBody.page, 1);
+  const globalPageSize = toPositiveInt(
+    normalizedBody.page_size ?? normalizedBody.pageSize,
+    50
+  );
 
   const payload = {
-    ...body,
+    ...normalizedBody,
     group_by_division: groupByDivision,
     groupByDivision: groupByDivision,
     group_by_collection_center: groupByCollectionCenter,
@@ -580,7 +664,7 @@ async function buildBillAmountBreakupSummaryResponse(
     groupByScheme: groupByScheme,
   };
   const totalsOnlyPayload = {
-    ...body,
+    ...normalizedBody,
     group_by_division: false,
     groupByDivision: false,
     group_by_collection_center: false,
@@ -590,16 +674,22 @@ async function buildBillAmountBreakupSummaryResponse(
   };
 
   const departmentId = cleanString(
-    body.department_id || body.departmentId || body.department
+    normalizedBody.department_id ||
+      normalizedBody.departmentId ||
+      normalizedBody.department
   );
-  const divisionId = cleanString(body.division_id || body.divisionId || body.division);
+  const divisionId = cleanString(
+    normalizedBody.division_id || normalizedBody.divisionId || normalizedBody.division
+  );
   const collectionCenterId = cleanString(
-    body.collection_center_id ||
-      body.collectionCenterId ||
-      body.collection_center ||
-      body.collectionCenter
+    normalizedBody.collection_center_id ||
+      normalizedBody.collectionCenterId ||
+      normalizedBody.collection_center ||
+      normalizedBody.collectionCenter
   );
-  const schemeId = cleanString(body.scheme_id || body.schemeId || body.scheme);
+  const schemeId = cleanString(
+    normalizedBody.scheme_id || normalizedBody.schemeId || normalizedBody.scheme
+  );
 
   const summary = await fetchBillCollectionSummary(payload);
 
@@ -615,7 +705,7 @@ async function buildBillAmountBreakupSummaryResponse(
           division_id: divisionId,
         }),
         requestedId: divisionId,
-        requestedName: cleanString(body.division),
+        requestedName: cleanString(normalizedBody.division),
       })
     : [];
   const collectionCenterRows = groupByCollectionCenter
@@ -630,7 +720,9 @@ async function buildBillAmountBreakupSummaryResponse(
           division_id: divisionId,
         }),
         requestedId: collectionCenterId,
-        requestedName: cleanString(body.collection_center || body.collectionCenter),
+        requestedName: cleanString(
+          normalizedBody.collection_center || normalizedBody.collectionCenter
+        ),
       })
     : [];
   const schemeRows = groupByScheme
@@ -645,7 +737,7 @@ async function buildBillAmountBreakupSummaryResponse(
           division_id: divisionId,
         }),
         requestedId: schemeId,
-        requestedName: cleanString(body.scheme),
+        requestedName: cleanString(normalizedBody.scheme),
       })
     : [];
 
@@ -680,18 +772,20 @@ async function buildBillAmountBreakupSummaryResponse(
   if (groupByDivision) {
     if (includePagination) {
       const divisionSortBy = String(
-        body.division_sort_by || body.divisionSortBy || globalSortBy
+        normalizedBody.division_sort_by || normalizedBody.divisionSortBy || globalSortBy
       ).trim();
       const divisionSortOrder = normalizeSortOrder(
-        body.division_sort_order || body.divisionSortOrder || globalSortOrder,
+        normalizedBody.division_sort_order ||
+          normalizedBody.divisionSortOrder ||
+          globalSortOrder,
         globalSortOrder
       );
       const divisionPage = toPositiveInt(
-        body.division_page ?? body.divisionPage,
+        normalizedBody.division_page ?? normalizedBody.divisionPage,
         globalPage
       );
       const divisionPageSize = toPositiveInt(
-        body.division_page_size ?? body.divisionPageSize,
+        normalizedBody.division_page_size ?? normalizedBody.divisionPageSize,
         globalPageSize
       );
       const pagedDivision = applySortAndPagination(divisionWiseDetails, {
@@ -706,9 +800,14 @@ async function buildBillAmountBreakupSummaryResponse(
     } else {
       data.division_wise_details = sortRows(divisionWiseDetails, {
         type: "division",
-        sortBy: body.division_sort_by || body.divisionSortBy || globalSortBy,
+        sortBy:
+          normalizedBody.division_sort_by ||
+          normalizedBody.divisionSortBy ||
+          globalSortBy,
         sortOrder:
-          body.division_sort_order || body.divisionSortOrder || globalSortOrder,
+          normalizedBody.division_sort_order ||
+          normalizedBody.divisionSortOrder ||
+          globalSortOrder,
       });
     }
   }
@@ -716,22 +815,23 @@ async function buildBillAmountBreakupSummaryResponse(
   if (groupByCollectionCenter) {
     if (includePagination) {
       const collectionCenterSortBy = String(
-        body.collection_center_sort_by ||
-          body.collectionCenterSortBy ||
+        normalizedBody.collection_center_sort_by ||
+          normalizedBody.collectionCenterSortBy ||
           globalSortBy
       ).trim();
       const collectionCenterSortOrder = normalizeSortOrder(
-        body.collection_center_sort_order ||
-          body.collectionCenterSortOrder ||
+        normalizedBody.collection_center_sort_order ||
+          normalizedBody.collectionCenterSortOrder ||
           globalSortOrder,
         globalSortOrder
       );
       const collectionCenterPage = toPositiveInt(
-        body.collection_center_page ?? body.collectionCenterPage,
+        normalizedBody.collection_center_page ?? normalizedBody.collectionCenterPage,
         globalPage
       );
       const collectionCenterPageSize = toPositiveInt(
-        body.collection_center_page_size ?? body.collectionCenterPageSize,
+        normalizedBody.collection_center_page_size ??
+          normalizedBody.collectionCenterPageSize,
         globalPageSize
       );
       const pagedCollectionCenter = applySortAndPagination(
@@ -750,12 +850,12 @@ async function buildBillAmountBreakupSummaryResponse(
       data.collection_center_wise_details = sortRows(collectionCenterWiseDetails, {
         type: "collection_center",
         sortBy:
-          body.collection_center_sort_by ||
-          body.collectionCenterSortBy ||
+          normalizedBody.collection_center_sort_by ||
+          normalizedBody.collectionCenterSortBy ||
           globalSortBy,
         sortOrder:
-          body.collection_center_sort_order ||
-          body.collectionCenterSortOrder ||
+          normalizedBody.collection_center_sort_order ||
+          normalizedBody.collectionCenterSortOrder ||
           globalSortOrder,
       });
     }
@@ -764,15 +864,20 @@ async function buildBillAmountBreakupSummaryResponse(
   if (groupByScheme) {
     if (includePagination) {
       const schemeSortBy = String(
-        body.scheme_sort_by || body.schemeSortBy || globalSortBy
+        normalizedBody.scheme_sort_by || normalizedBody.schemeSortBy || globalSortBy
       ).trim();
       const schemeSortOrder = normalizeSortOrder(
-        body.scheme_sort_order || body.schemeSortOrder || globalSortOrder,
+        normalizedBody.scheme_sort_order ||
+          normalizedBody.schemeSortOrder ||
+          globalSortOrder,
         globalSortOrder
       );
-      const schemePage = toPositiveInt(body.scheme_page ?? body.schemePage, globalPage);
+      const schemePage = toPositiveInt(
+        normalizedBody.scheme_page ?? normalizedBody.schemePage,
+        globalPage
+      );
       const schemePageSize = toPositiveInt(
-        body.scheme_page_size ?? body.schemePageSize,
+        normalizedBody.scheme_page_size ?? normalizedBody.schemePageSize,
         globalPageSize
       );
       const pagedScheme = applySortAndPagination(schemeWiseDetails, {
@@ -787,8 +892,14 @@ async function buildBillAmountBreakupSummaryResponse(
     } else {
       data.scheme_wise_details = sortRows(schemeWiseDetails, {
         type: "scheme",
-        sortBy: body.scheme_sort_by || body.schemeSortBy || globalSortBy,
-        sortOrder: body.scheme_sort_order || body.schemeSortOrder || globalSortOrder,
+        sortBy:
+          normalizedBody.scheme_sort_by ||
+          normalizedBody.schemeSortBy ||
+          globalSortBy,
+        sortOrder:
+          normalizedBody.scheme_sort_order ||
+          normalizedBody.schemeSortOrder ||
+          globalSortOrder,
       });
     }
   }
@@ -797,9 +908,15 @@ async function buildBillAmountBreakupSummaryResponse(
     department_id: departmentId || null,
     division_id: divisionId || null,
     start_date:
-      summary?.filters?.start_date || body.start_date || body.startDate || null,
+      summary?.filters?.start_date ||
+      normalizedBody.start_date ||
+      normalizedBody.startDate ||
+      null,
     end_date:
-      summary?.filters?.end_date || body.end_date || body.endDate || null,
+      summary?.filters?.end_date ||
+      normalizedBody.end_date ||
+      normalizedBody.endDate ||
+      null,
     total_bill_generated_count: totals.total_bill_generated_count,
     total_bill_paid_count: totals.total_bill_paid_count,
     total_collected_amount_paid_and_partial: totals.total_collected_amount,
@@ -825,18 +942,19 @@ async function createBillAmountBreakupSummaryHandler(req, reply) {
 async function createBillAmountBreakupSummaryPdfHandler(req, reply) {
   try {
     const body = req.body || {};
-    const data = await buildBillAmountBreakupSummaryResponse(body, {
+    const normalizedBody = normalizeMonthRangePayload(body);
+    const data = await buildBillAmountBreakupSummaryResponse(normalizedBody, {
       paginate: false,
     });
-    const pdfContext = await resolveBillAmountBreakupPdfContext(body);
+    const pdfContext = await resolveBillAmountBreakupPdfContext(normalizedBody);
     const pdf = await createBillAmountBreakupSummaryPdf({
-      body,
+      body: normalizedBody,
       data,
       pdfContext,
       department:
-        body?.departmentId ||
-        body?.department_id ||
-        body?.department ||
+        normalizedBody?.departmentId ||
+        normalizedBody?.department_id ||
+        normalizedBody?.department ||
         data?.filters?.departmentId ||
         data?.filters?.department_id ||
         data?.filters?.department,

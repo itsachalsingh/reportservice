@@ -169,6 +169,14 @@ message BillCollectionSummaryData {
   double total_advance_used = 66;
   double total_advance_used_paise = 67;
   double total_advance_used_rounded_rupees = 68;
+  int64 total_bill_cancelled_count = 69;
+  double total_bill_cancelled_amount = 70;
+  double total_bill_cancelled_amount_paise = 71;
+  double total_bill_cancelled_amount_rounded_rupees = 72;
+  int64 total_bill_waived_off_count = 73;
+  double total_bill_waived_off_amount = 74;
+  double total_bill_waived_off_amount_paise = 75;
+  double total_bill_waived_off_amount_rounded_rupees = 76;
 }
 
 message BillCollectionSummaryResponse {

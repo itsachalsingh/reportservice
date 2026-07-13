@@ -39,9 +39,27 @@ function getClient() {
 export function getSchemes(payload = {}) {
   const client = getClient();
   return new Promise((resolve, reject) => {
-    client.getSchemes(payload, (error, response) => {
+    const fn = client.getSchemes || client.GetSchemes;
+    fn.call(client, payload, (error, response) => {
       if (error) {
         const err = new Error(error?.message || "Failed to fetch schemes");
+        err.code = error.code;
+        return reject(err);
+      }
+      resolve(response || {});
+    });
+  });
+}
+
+export function getSchemeById(id) {
+  const client = getClient();
+  const schemeId = String(id || "").trim();
+  return new Promise((resolve, reject) => {
+    if (!schemeId) return resolve({});
+    const fn = client.getSchemeById || client.GetSchemeById;
+    fn.call(client, { id: schemeId }, (error, response) => {
+      if (error) {
+        const err = new Error(error?.message || "Failed to fetch scheme");
         err.code = error.code;
         return reject(err);
       }

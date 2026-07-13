@@ -4,7 +4,7 @@ import {
   getLegacyArrearGrpcTarget,
 } from "../utils/grpc/legacyArrearClient.js";
 import { getCollectionCenters } from "../utils/grpc/collectionCenterClient.js";
-import { getSchemes } from "../utils/grpc/schemeClient.js";
+import { getSchemeById, getSchemes } from "../utils/grpc/schemeClient.js";
 import { createLegacyArrearSummaryPdf } from "../utils/legacyArrearPdf.js";
 
 const reportBody = {
@@ -122,7 +122,7 @@ async function enrichGroupingLabels(rows = [], requestBody = {}, filters = {}, g
     rows.some((row) => cleanString(row?.collection_center_id) && isMissingLabel(row?.collection_center));
   const needsSchemeLabel =
     Boolean(grouping?.by_scheme) &&
-    rows.some((row) => cleanString(row?.scheme_id) && isMissingLabel(row?.scheme));
+    rows.some((row) => cleanString(row?.scheme_id));
 
   if (!needsCollectionCenterLabel && !needsSchemeLabel) return rows;
 
@@ -156,11 +156,46 @@ async function enrichGroupingLabels(rows = [], requestBody = {}, filters = {}, g
       : Promise.resolve(new Map()),
   ]);
 
+  if (needsSchemeLabel) {
+    const missingSchemeIds = [
+      ...new Set(
+        rows
+          .map((row) => cleanString(row?.scheme_id))
+          .filter((schemeId) => schemeId && !schemeMap.has(schemeId))
+      ),
+    ];
+
+    if (missingSchemeIds.length) {
+      const schemeLookups = await Promise.all(
+        missingSchemeIds.map((schemeId) =>
+          getSchemeById(schemeId)
+            .then((resp) => ({
+              id: cleanString(resp?.scheme?.id || schemeId),
+              title: cleanString(resp?.scheme?.title),
+            }))
+            .catch(() => null)
+        )
+      );
+
+      for (const scheme of schemeLookups) {
+        if (scheme?.id && scheme?.title) {
+          schemeMap.set(scheme.id, scheme.title);
+        }
+      }
+    }
+  }
+
   return rows.map((row) => {
     const collectionCenterId = cleanString(row?.collection_center_id);
     const schemeId = cleanString(row?.scheme_id);
     const mappedCollectionCenter = collectionCenterMap.get(collectionCenterId) || "";
     const mappedScheme = schemeMap.get(schemeId) || "";
+    const resolvedScheme =
+      schemeId && mappedScheme
+        ? mappedScheme
+        : shouldReplaceLabel(row?.scheme, schemeId, mappedScheme)
+          ? mappedScheme
+          : row?.scheme;
 
     return {
       ...row,
@@ -172,10 +207,7 @@ async function enrichGroupingLabels(rows = [], requestBody = {}, filters = {}, g
         )
           ? mappedCollectionCenter
           : row?.collection_center,
-      scheme:
-        shouldReplaceLabel(row?.scheme, schemeId, mappedScheme)
-          ? mappedScheme
-          : row?.scheme,
+      scheme: resolvedScheme,
     };
   });
 }
@@ -215,22 +247,29 @@ async function expandRowsWithMasterGrouping(rows = [], requestBody = {}, filters
       : [];
     if (!centers.length) return rows;
 
-    const byCenter = new Map(
-      rows
-        .map((row) => [cleanString(row?.collection_center_id), row])
-        .filter(([id]) => Boolean(id))
-    );
+    const byCenter = new Map();
+    for (const row of rows) {
+      const centerId = cleanString(row?.collection_center_id);
+      if (!centerId) continue;
+      const existingRows = byCenter.get(centerId) || [];
+      existingRows.push(row);
+      byCenter.set(centerId, existingRows);
+    }
 
     const out = [];
+    const masterCenterIds = new Set();
     for (const center of centers) {
       const centerId = cleanString(center?.id);
       if (!centerId) continue;
-      const existing = byCenter.get(centerId);
-      if (existing) {
-        out.push({
-          ...existing,
-          collection_center: cleanString(existing?.collection_center) || cleanString(center?.title),
-        });
+      masterCenterIds.add(centerId);
+      const existingRows = byCenter.get(centerId) || [];
+      if (existingRows.length) {
+        for (const existing of existingRows) {
+          out.push({
+            ...existing,
+            collection_center: cleanString(center?.title) || cleanString(existing?.collection_center),
+          });
+        }
       } else {
         out.push(
           zeroLegacyRow({
@@ -240,6 +279,13 @@ async function expandRowsWithMasterGrouping(rows = [], requestBody = {}, filters
             collection_center: cleanString(center?.title),
           })
         );
+      }
+    }
+
+    for (const row of rows) {
+      const centerId = cleanString(row?.collection_center_id);
+      if (!centerId || !masterCenterIds.has(centerId)) {
+        out.push(row);
       }
     }
     return out;
@@ -254,22 +300,29 @@ async function expandRowsWithMasterGrouping(rows = [], requestBody = {}, filters
   const schemes = Array.isArray(master?.schemes) ? master.schemes : [];
   if (!schemes.length) return rows;
 
-  const bySchemeMap = new Map(
-    rows
-      .map((row) => [cleanString(row?.scheme_id), row])
-      .filter(([id]) => Boolean(id))
-  );
+  const bySchemeMap = new Map();
+  for (const row of rows) {
+    const schemeId = cleanString(row?.scheme_id);
+    if (!schemeId) continue;
+    const existingRows = bySchemeMap.get(schemeId) || [];
+    existingRows.push(row);
+    bySchemeMap.set(schemeId, existingRows);
+  }
 
   const out = [];
+  const masterSchemeIds = new Set();
   for (const scheme of schemes) {
     const schemeId = cleanString(scheme?.id);
     if (!schemeId) continue;
-    const existing = bySchemeMap.get(schemeId);
-    if (existing) {
-      out.push({
-        ...existing,
-        scheme: cleanString(existing?.scheme) || cleanString(scheme?.title),
-      });
+    masterSchemeIds.add(schemeId);
+    const existingRows = bySchemeMap.get(schemeId) || [];
+    if (existingRows.length) {
+      for (const existing of existingRows) {
+        out.push({
+          ...existing,
+          scheme: cleanString(scheme?.title) || cleanString(existing?.scheme),
+        });
+      }
     } else {
       out.push(
         zeroLegacyRow({
@@ -279,6 +332,12 @@ async function expandRowsWithMasterGrouping(rows = [], requestBody = {}, filters
           scheme: cleanString(scheme?.title),
         })
       );
+    }
+  }
+  for (const row of rows) {
+    const schemeId = cleanString(row?.scheme_id);
+    if (!schemeId || !masterSchemeIds.has(schemeId)) {
+      out.push(row);
     }
   }
   return out;

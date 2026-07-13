@@ -120,6 +120,9 @@ message ConnectionCategorySummaryRequest {
   string revenue_unit_id = 6;
   string ledger_id = 7;
   string lane_id = 8;
+  string start_date = 9;
+  string end_date = 10;
+  string status = 11;
 }
 
 message ConnectionCategorySummaryRow {
@@ -132,6 +135,7 @@ message ConnectionCategorySummaryRow {
   uint32 water_d = 7;
   uint32 sewer_d = 8;
   uint32 both_d = 9;
+  string connection_category_id = 10;
 }
 
 message ConnectionCategorySummaryResponse {
@@ -148,6 +152,8 @@ message ConnectionCountSummaryRequest {
   string revenue_unit_id = 5;
   string ledger_id = 6;
   string lane_id = 7;
+  string start_date = 8;
+  string end_date = 9;
 }
 
 message ConnectionCountSummaryRow {

@@ -184,6 +184,11 @@ export async function getDailyIncomeReportRPC(input, options = {}) {
     include_summary: input?.include_summary,
     include_total: input?.include_total,
     resolve_location_names: input?.resolve_location_names,
+    include_date_breakdown:
+      input?.include_date_breakdown ?? input?.includeDateBreakdown,
+    include_details: input?.include_details ?? input?.includeDetails,
+    paginate_date_breakdown:
+      input?.paginate_date_breakdown ?? input?.paginateDateBreakdown,
   };
   const timeoutMs = resolveTimeoutMs(options?.timeoutMs, REPORT_TIMEOUT_MS);
 

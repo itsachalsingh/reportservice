@@ -16,6 +16,15 @@ import { getDailyIncomeReportRPC } from "../utils/rpcClient.js";
 
 const transactionTypeFilterValues = [...transactionTypes, ""];
 
+function setNoStoreHeaders(reply) {
+  reply.header(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate"
+  );
+  reply.header("Pragma", "no-cache");
+  reply.header("Expires", "0");
+}
+
 const dailyIncomeBody = {
   type: "object",
   required: ["start_date", "end_date"],
@@ -110,6 +119,7 @@ async function createDailyIncomeHandler(req, reply) {
   };
 
   try {
+    setNoStoreHeaders(reply);
     const rpc = await getDailyIncomeReportRPC(payload);
     return reply.send({ ok: true, data: rpc });
   } catch (err) {
@@ -122,6 +132,29 @@ async function createDailyIncomeHandler(req, reply) {
   }
 }
 
+async function createMonthlyCollectionStatementHandler(req, reply) {
+  const payload = {
+    ...(req.body || {}),
+    ...buildDailyIncomePayload(req.body || {}),
+    include_date_breakdown: true,
+    include_details: false,
+    paginate_date_breakdown: true,
+  };
+
+  try {
+    setNoStoreHeaders(reply);
+    const rpc = await getDailyIncomeReportRPC(payload);
+    return reply.send({ ok: true, data: rpc });
+  } catch (err) {
+    req.log.error({ err }, "monthly-collection-statement failed");
+    return reply.code(500).send({
+      ok: false,
+      message: "Failed to fetch monthly collection statement",
+      error: err?.message || String(err),
+    });
+  }
+}
+
 async function createDailyIncomePdfHandler(req, reply) {
   const payload = {
     ...(req.body || {}),
@@ -129,6 +162,7 @@ async function createDailyIncomePdfHandler(req, reply) {
   };
 
   try {
+    setNoStoreHeaders(reply);
     const { pdf } = await generateDailyIncomePdfBuffer(payload);
     const ts = new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 14);
     reply.header("Content-Type", "application/pdf");
@@ -159,6 +193,7 @@ async function createCancelledTransactionsHandler(req, reply) {
   };
 
   try {
+    setNoStoreHeaders(reply);
     const rpc = await getDailyIncomeReportRPC(payload);
     return reply.send({ ok: true, data: rpc });
   } catch (err) {
@@ -286,6 +321,20 @@ async function routes(fastify, opts) {
       ),
     },
     createDailyIncomeHandler
+  );
+
+  fastify.post(
+    "/monthly-collection-statement",
+    {
+      ...authRoute(
+        {
+          tags: ["Income Report"],
+          body: dailyIncomeBody,
+        },
+        "Income Report"
+      ),
+    },
+    createMonthlyCollectionStatementHandler
   );
 
   fastify.post(

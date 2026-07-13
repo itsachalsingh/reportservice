@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
 import { getConnectionCountSummary } from "../utils/grpc/connectionClient.js";
+import { getRollingConnectionReportStartDate } from "../utils/connectionReportDateRange.js";
 import { renderConnectionCountReportSvg } from "../utils/reportSvg.js";
 
 const reportBody = {
@@ -20,6 +21,8 @@ const reportBody = {
     ledger_id: { type: "string" },
     lane: { type: "string" },
     lane_id: { type: "string" },
+    start_date: { type: "string" },
+    end_date: { type: "string" },
   },
   required: [],
 };
@@ -39,6 +42,11 @@ async function createReportHandler(req, reply) {
   const revenue_unit_id = coalesceId(req.body, "revenue_unit_id", "revenue_unit");
   const ledger_id = coalesceId(req.body, "ledger_id", "ledger");
   const lane_id = coalesceId(req.body, "lane_id", "lane");
+  const start_date = getRollingConnectionReportStartDate(
+    req.body?.start_date,
+    req.body?.end_date
+  );
+  const end_date = req.body?.end_date || "";
 
   if (!department_id) {
     return reply.code(400).send({
@@ -56,6 +64,8 @@ async function createReportHandler(req, reply) {
       revenue_unit_id,
       ledger_id,
       lane_id,
+      start_date,
+      end_date,
     });
 
     const rows = Array.isArray(data?.rows) ? data.rows : [];
@@ -84,7 +94,8 @@ async function createReportHandler(req, reply) {
     return reply.send(svg);
   } catch (err) {
     req.log.error({ err }, "consumer-connection-count-report failed");
-    return reply.code(500).send({
+    const statusCode = err?.code === 3 ? 400 : 500;
+    return reply.code(statusCode).send({
       ok: false,
       message: "Failed to fetch consumer connection count report",
       error: err?.message || String(err),

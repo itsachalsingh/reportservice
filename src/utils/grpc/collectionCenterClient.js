@@ -39,7 +39,8 @@ function getClient() {
 export function getCollectionCenters(payload = {}) {
   const client = getClient();
   return new Promise((resolve, reject) => {
-    client.getCollectionCenters(payload, (error, response) => {
+    const fn = client.getCollectionCenters || client.GetCollectionCenters;
+    fn.call(client, payload, (error, response) => {
       if (error) {
         const err = new Error(
           error?.message || "Failed to fetch collection centers"

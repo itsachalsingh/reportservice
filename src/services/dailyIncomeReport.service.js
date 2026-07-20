@@ -49,6 +49,135 @@ function parsePositiveInt(value, fallback = null) {
   return Math.trunc(parsed);
 }
 
+function reportMoney(value) {
+  const amount = Number(value ?? 0);
+  return Number.isFinite(amount) ? Math.round(amount) : 0;
+}
+
+function allocateReportAmount(row = {}, amount = 0) {
+  let remaining = reportMoney(amount);
+  const allocated = {};
+  const charges = [
+    ["late_fee", "late_fee"],
+    ["water_arrear", "water_arrear"],
+    ["sewer_arrear", "sewer_arrear"],
+    ["meter_rent_arrear", "meter_rent_arrear"],
+    ["other_arrear", "other_arrear"],
+    ["late_fee_arrear", "late_fee_arrear"],
+    ["water_charges", "water_charges"],
+    ["sewer_charges", "sewer_charges"],
+    ["meter_rent", "meter_rent"],
+    ["others", "others"],
+  ];
+
+  for (const [target, source] of charges) {
+    const due = Math.max(0, reportMoney(row?.[source]));
+    const paid = Math.min(Math.max(0, remaining), due);
+    allocated[target] = paid;
+    remaining -= paid;
+  }
+  allocated.excess_amount = Math.max(0, remaining);
+  return allocated;
+}
+
+function subtractAllocation(current = {}, previous = {}) {
+  const result = {};
+  for (const key of Object.keys(current)) {
+    result[key] = Math.max(
+      0,
+      reportMoney(current?.[key]) - reportMoney(previous?.[key])
+    );
+  }
+  return result;
+}
+
+// The payment RPC enriches every transaction with its bill's full breakup. For
+// partial/multiple payments that repeats the same demand on every PDF row. Turn
+// those bill-level values into transaction-level allocations, using the same
+// charge priority as the MPR summary.
+export function allocateDailyIncomePdfDetails(details = []) {
+  if (!Array.isArray(details) || !details.length) return details;
+
+  const output = details.map((row) => ({ ...row }));
+  const groups = new Map();
+  output.forEach((row, index) => {
+    if (String(row?.type || "").toLowerCase() !== "bill") return;
+    const billNumber = firstText(row?.bill_number, row?.billNumber);
+    if (!billNumber) return;
+    if (!groups.has(billNumber)) groups.set(billNumber, []);
+    groups.get(billNumber).push({ row, index });
+  });
+
+  for (const items of groups.values()) {
+    items.sort((a, b) => {
+      const aTime = new Date(a.row?.transaction_date || 0).getTime();
+      const bTime = new Date(b.row?.transaction_date || 0).getTime();
+      return aTime - bTime || a.index - b.index;
+    });
+
+    const bill = items[0].row;
+    const hasPartialPayment = items.some(
+      ({ row }) => row?.is_partial_payment === true || row?.isPartialPayment === true
+    );
+    const dueTime = new Date(bill?.due_date || bill?.dueDate || 0).getTime();
+    const lastPaymentTime = Math.max(
+      ...items.map(({ row }) => new Date(row?.transaction_date || 0).getTime())
+    );
+    const rawRebate = reportMoney(bill?.discount);
+    const hasUsableDates =
+      Number.isFinite(dueTime) &&
+      dueTime > 0 &&
+      Number.isFinite(lastPaymentTime) &&
+      lastPaymentTime > 0;
+    const rebate =
+      !hasPartialPayment &&
+      (!hasUsableDates || lastPaymentTime <= dueTime + 86_399_999)
+        ? rawRebate
+        : 0;
+    const previousAdvance = reportMoney(
+      bill?.previous_advance ?? bill?.adv_wb_chrg ?? bill?.advanceused
+    );
+
+    let cumulativePaid = 0;
+    let previousAllocation = {};
+    items.forEach(({ row, index }, itemIndex) => {
+      cumulativePaid += reportMoney(row?.paid_amount ?? row?.amount);
+      const cumulativeAllocation = allocateReportAmount(
+        bill,
+        cumulativePaid + rebate + previousAdvance
+      );
+      const allocation = subtractAllocation(cumulativeAllocation, previousAllocation);
+      previousAllocation = cumulativeAllocation;
+
+      const arrears =
+        allocation.water_arrear +
+        allocation.sewer_arrear +
+        allocation.meter_rent_arrear +
+        allocation.other_arrear +
+        allocation.late_fee_arrear;
+      const chargeTotal =
+        allocation.water_charges +
+        allocation.sewer_charges +
+        allocation.meter_rent +
+        allocation.others +
+        allocation.late_fee +
+        arrears;
+
+      output[index] = {
+        ...row,
+        ...allocation,
+        arrears,
+        bill_amount: chargeTotal,
+        discount: itemIndex === 0 ? rebate : 0,
+        previous_advance: itemIndex === 0 ? previousAdvance : 0,
+        adv_wb_chrg: itemIndex === 0 ? previousAdvance : 0,
+      };
+    });
+  }
+
+  return output;
+}
+
 export const PDF_FETCH_LIMIT = Math.max(
   1,
   Math.min(500, Number(process.env.DAILY_INCOME_PDF_FETCH_LIMIT) || 500)
@@ -323,7 +452,7 @@ export async function fetchDailyIncomeReportForPdf(
       ...firstRpc,
       data: {
         ...firstData,
-        details: firstDetails,
+        details: allocateDailyIncomePdfDetails(firstDetails),
         pagination: {
           ...firstPagination,
           page: 1,
@@ -377,7 +506,10 @@ export async function fetchDailyIncomeReportForPdf(
     ...firstRpc,
     data: {
       ...firstData,
-      details: [...firstDetails, ...remainingDetails],
+      details: allocateDailyIncomePdfDetails([
+        ...firstDetails,
+        ...remainingDetails,
+      ]),
       pagination: {
         ...firstPagination,
         page: 1,

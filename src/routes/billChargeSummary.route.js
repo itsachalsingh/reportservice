@@ -147,15 +147,41 @@ function toMonthlyReportRow(range, totals = {}) {
   const meterArrear = toRoundedRupees(paid?.meter_arrear_charges);
   const otherArrear = toRoundedRupees(paid?.other_charges_arrear);
   const lateFineArrear = toRoundedRupees(paid?.late_fine_arrear);
+  const surcharge = toRoundedRupees(paid?.fine);
+  const rebate = toRoundedRupees(totals?.total_discount);
+  const additionalSurcharge = lateFineArrear;
+  const collectionByPaymentType = sourceTotals?.collection_by_payment_type || {};
+  const onlineAmount = toRoundedRupees(collectionByPaymentType?.online?.amount);
+  const cscAmount = toRoundedRupees(collectionByPaymentType?.csc?.amount);
+  const offlineOnlineAmount = toRoundedRupees(collectionByPaymentType?.center?.amount);
+  const waterCharges = toRoundedRupees(paid?.water_charges);
+  const sewerCharges = toRoundedRupees(paid?.sewer_charges);
+  const meterRent = toRoundedRupees(paid?.meter_charges);
+  const otherAmount =
+    toRoundedRupees(paid?.other_charges) +
+    toRoundedRupees(sourceTotals?.other_transaction_amount);
 
   return {
     ...range,
-    water_charges: toRoundedRupees(paid?.water_charges),
-    sewer_charges: toRoundedRupees(paid?.sewer_charges),
-    meter_rent: toRoundedRupees(paid?.meter_charges),
-    other_amount:
-      toRoundedRupees(paid?.other_charges) +
-      toRoundedRupees(sourceTotals?.other_transaction_amount),
+    water_charges: waterCharges,
+    sewer_charges: sewerCharges,
+    meter_rent: meterRent,
+    other_amount: otherAmount,
+    surcharge,
+    rebate,
+    additional_surcharge: additionalSurcharge,
+    charge_total:
+      waterCharges +
+      sewerCharges +
+      meterRent +
+      otherAmount +
+      surcharge -
+      rebate +
+      additionalSurcharge,
+    online_amount: onlineAmount,
+    csc_amount: cscAmount,
+    offline_online_amount: offlineOnlineAmount,
+    collection_amount: onlineAmount + cscAmount + offlineOnlineAmount,
     application_form_amount: toRoundedRupees(sourceTotals?.form_amount),
     demand_amount: toRoundedRupees(sourceTotals?.demand_amount),
     service_amount: toRoundedRupees(sourceTotals?.service_amount),
@@ -183,6 +209,14 @@ const MONTHLY_TOTAL_FIELDS = [
   "sewer_charges",
   "meter_rent",
   "other_amount",
+  "surcharge",
+  "rebate",
+  "additional_surcharge",
+  "charge_total",
+  "online_amount",
+  "csc_amount",
+  "offline_online_amount",
+  "collection_amount",
   "application_form_amount",
   "demand_amount",
   "service_amount",
@@ -310,6 +344,10 @@ async function createMonthlyBillChargeSummaryHandler(req, reply) {
     for (const range of ranges) {
       const summary = await getBillChargeTransactionSummaryRPC({
         ...payload,
+        // MPR receipt counts and collections include successful receipts only.
+        status: "completed",
+        transaction_status: "completed",
+        transactionStatus: "completed",
         start_date: range.start_date,
         startDate: range.start_date,
         from_date: range.start_date,
@@ -338,6 +376,7 @@ async function createMonthlyBillChargeSummaryHandler(req, reply) {
           start_date: payload.start_date,
           end_date: payload.end_date,
           payment_method: payload.payment_method || null,
+          status: "completed",
         },
         currency: "INR",
         rounded_to_whole_rupees: true,

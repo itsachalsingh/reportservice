@@ -2,7 +2,7 @@ import fp from "fastify-plugin";
 import { fetchBillCollectionSummary } from "../utils/grpc/billCollectionSummaryClient.js";
 import { getDivisionsByDepartment } from "../utils/grpc/divisionClient.js";
 import { getCollectionCenters } from "../utils/grpc/collectionCenterClient.js";
-import { getSchemes } from "../utils/grpc/schemeClient.js";
+import { getSchemeById, getSchemes } from "../utils/grpc/schemeClient.js";
 import { createBillAmountBreakupSummaryPdf } from "../utils/billAmountBreakupSummaryPdf.js";
 
 const reportBody = {
@@ -468,6 +468,47 @@ async function fetchSchemesByScope({ department_id = "", division_id = "" }) {
   }
 }
 
+async function fetchSchemesByIds(schemeIds = []) {
+  const uniqueIds = [...new Set((schemeIds || []).map(cleanString).filter(Boolean))];
+  const responses = await Promise.all(
+    uniqueIds.map(async (schemeId) => {
+      try {
+        const out = await getSchemeById(schemeId);
+        const scheme = out?.scheme || {};
+        return {
+          scheme_id: firstNonEmpty(scheme?.id, scheme?._id, schemeId),
+          scheme_name: firstNonEmpty(
+            scheme?.title,
+            scheme?.name,
+            scheme?.scheme_name
+          ),
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+  return responses.filter((row) => row?.scheme_id && row?.scheme_name);
+}
+
+async function resolveSchemeMasterRows({
+  summaryRows = [],
+  department_id = "",
+  division_id = "",
+}) {
+  const scopedRows = await fetchSchemesByScope({ department_id, division_id });
+  const scopedIds = new Set(
+    scopedRows
+      .filter((row) => cleanString(row?.scheme_name))
+      .map((row) => cleanString(row?.scheme_id))
+  );
+  const missingIds = (summaryRows || [])
+    .map((row) => cleanString(row?.scheme_id))
+    .filter((id) => id && !scopedIds.has(id));
+  if (!missingIds.length) return scopedRows;
+  return [...scopedRows, ...(await fetchSchemesByIds(missingIds))];
+}
+
 async function fetchMasterRows({ type = "", department_id = "", division_id = "" }) {
   const dep = cleanString(department_id);
   const div = cleanString(division_id);
@@ -564,7 +605,7 @@ export function normalizeScopedGroupRows({
     summaryMap.set(id, {
       [idKey]: id,
       [nameKey]: cleanString(
-        existing?.[nameKey] || row?.[nameKey] || masterNameById.get(id)
+        masterNameById.get(id) || existing?.[nameKey] || row?.[nameKey]
       ),
     });
   }
@@ -692,6 +733,9 @@ async function buildBillAmountBreakupSummaryResponse(
   );
 
   const summary = await fetchBillCollectionSummary(payload);
+  const summarySchemeRows = Array.isArray(summary?.data?.scheme_wise)
+    ? summary.data.scheme_wise
+    : [];
 
   const divisionRows = groupByDivision
     ? normalizeScopedGroupRows({
@@ -728,11 +772,9 @@ async function buildBillAmountBreakupSummaryResponse(
   const schemeRows = groupByScheme
     ? normalizeScopedGroupRows({
         type: "scheme",
-        summaryRows: Array.isArray(summary?.data?.scheme_wise)
-          ? summary.data.scheme_wise
-          : [],
-        masterRows: await fetchMasterRows({
-          type: "scheme",
+        summaryRows: summarySchemeRows,
+        masterRows: await resolveSchemeMasterRows({
+          summaryRows: summarySchemeRows,
           department_id: departmentId,
           division_id: divisionId,
         }),

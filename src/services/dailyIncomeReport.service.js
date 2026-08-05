@@ -1,4 +1,7 @@
-import { getDailyIncomeReportRPC } from "../utils/rpcClient.js";
+import {
+  getBillChargeTransactionSummaryRPC,
+  getDailyIncomeReportRPC,
+} from "../utils/rpcClient.js";
 import { createDailyIncomePdf } from "../utils/dailyIncomePdf.js";
 import { getConnectionByConsumerCode } from "../utils/grpc/connectionClient.js";
 import { getDivisionById } from "../utils/grpc/divisionClient.js";
@@ -176,6 +179,40 @@ export function allocateDailyIncomePdfDetails(details = []) {
   }
 
   return output;
+}
+
+export function buildPdfTotalsFromBillChargeSummary(totals = {}) {
+  const paid = totals?.source_totals?.paid_breakup || {};
+  const source = totals?.source_totals || {};
+  const water = reportMoney(paid?.water_charges);
+  const sewer = reportMoney(paid?.sewer_charges);
+  const meter = reportMoney(paid?.meter_charges);
+  const other =
+    reportMoney(paid?.other_charges) +
+    reportMoney(source?.other_transaction_amount);
+  const late = reportMoney(paid?.fine);
+  const disc = reportMoney(totals?.total_discount);
+  const arrears =
+    reportMoney(paid?.water_arrear_charges) +
+    reportMoney(paid?.sewer_arrear_charges) +
+    reportMoney(paid?.meter_arrear_charges) +
+    reportMoney(paid?.other_charges_arrear) +
+    reportMoney(paid?.late_fine_arrear);
+
+  return {
+    water,
+    sewer,
+    meter,
+    other,
+    late,
+    disc,
+    arrears,
+    total: water + sewer + meter + other + late + arrears,
+    paid: reportMoney(totals?.total_paid),
+    previousAdvance: reportMoney(totals?.total_previous_advance),
+    advance: reportMoney(totals?.total_new_advance),
+    balance: reportMoney(totals?.remaining_balance_net),
+  };
 }
 
 export const PDF_FETCH_LIMIT = Math.max(
@@ -534,6 +571,23 @@ export async function generateDailyIncomePdfBuffer(payload, options = {}) {
   }
 
   const reportData = rpc?.data || {};
+  const billChargeSummary = await getBillChargeTransactionSummaryRPC(
+    {
+      ...payload,
+      status: "completed",
+      transaction_status: "completed",
+    },
+    { timeoutMs: options?.rpcTimeoutMs || PDF_RPC_TIMEOUT_MS }
+  );
+  if (!billChargeSummary?.ok) {
+    throw new Error(
+      billChargeSummary?.message ||
+        "Failed to fetch the authoritative bill charge totals for PDF"
+    );
+  }
+  const detailTotalsOverride = buildPdfTotalsFromBillChargeSummary(
+    billChargeSummary?.data?.totals || {}
+  );
   const addressEnrichedDetails = await enrichDetailsWithConnectionAddress(
     Array.isArray(reportData?.details) ? reportData.details : []
   );
@@ -548,6 +602,7 @@ export async function generateDailyIncomePdfBuffer(payload, options = {}) {
     summary: reportData?.summary || {},
     details: enrichedDetails,
     pagination: reportData?.pagination || {},
+    detailTotalsOverride,
   });
 
   return {

@@ -224,6 +224,7 @@ export async function createDailyIncomePdf({
   summary = {},
   details = [],
   pagination = {},
+  detailTotalsOverride = null,
 } = {}) {
   const doc = new PDFDocument({
     size: WIDE_LANDSCAPE_PAGE,
@@ -444,7 +445,7 @@ export async function createDailyIncomePdf({
   ];
   const columns = fitColumnsToPage(doc, rawColumns);
   const columnsByKey = Object.fromEntries(columns.map((col) => [col.key, col]));
-  const detailTotals = buildDetailTotals(details);
+  const detailTotals = detailTotalsOverride || buildDetailTotals(details);
 
   const numericKeys = new Set([
     "water",

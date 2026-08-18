@@ -46,6 +46,10 @@ const reportBody = {
     bill_month: { type: "string" },
     billMonth: { type: "string" },
     month: { type: "string" },
+    startMonth: { type: "string" },
+    endMonth: { type: "string" },
+    startYear: { type: "string" },
+    endYear: { type: "string" },
     group_by_division: { type: "boolean" },
     groupByDivision: { type: "boolean" },
     group_by_collection_center: { type: "boolean" },
@@ -92,6 +96,41 @@ function normalizeId(value) {
 
 function normalizeName(value) {
   return String(value || "").trim();
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function monthNumber(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  const index = MONTH_NAMES.findIndex((month) => month.toLowerCase() === normalized);
+  return index < 0 ? 0 : index + 1;
+}
+
+function normalizeMonthDateRange(body = {}) {
+  const hasExplicitStart = body.start_date || body.startDate || body.from_date || body.from;
+  const hasExplicitEnd = body.end_date || body.endDate || body.to_date || body.to;
+  const startMonth = monthNumber(body.startMonth);
+  const endMonth = monthNumber(body.endMonth);
+  const startYear = Number(body.startYear);
+  const endYear = Number(body.endYear || body.startYear);
+
+  if (
+    hasExplicitStart || hasExplicitEnd || !startMonth || !endMonth ||
+    !Number.isInteger(startYear) || !Number.isInteger(endYear) ||
+    startYear < 1900 || endYear < 1900
+  ) {
+    return { ...body };
+  }
+
+  const start = `${startYear}-${String(startMonth).padStart(2, "0")}-01`;
+  const lastDay = new Date(Date.UTC(endYear, endMonth, 0)).getUTCDate();
+  const end = `${endYear}-${String(endMonth).padStart(2, "0")}-${lastDay}`;
+  if (start > end) return { ...body };
+
+  return { ...body, start_date: start, end_date: end };
 }
 
 async function fetchDepartmentDivisions(departmentId = "") {
@@ -587,7 +626,8 @@ async function buildBillCollectionSummaryResponse(body = {}, options = {}) {
 
 async function createBillCollectionSummaryHandler(req, reply) {
   try {
-    const merged = await buildBillCollectionSummaryResponse(req.body || {}, {
+    const body = normalizeMonthDateRange(req.body || {});
+    const merged = await buildBillCollectionSummaryResponse(body, {
       cacheScope: `${req.user?.id || req.user?._id || ""}:${req.user?.role_id || ""}`,
       log: req.log,
     });
@@ -604,7 +644,7 @@ async function createBillCollectionSummaryHandler(req, reply) {
 
 async function createBillCollectionSummaryPdfHandler(req, reply) {
   try {
-    const body = req.body || {};
+    const body = normalizeMonthDateRange(req.body || {});
     const merged = await buildBillCollectionSummaryResponse(body, {
       includeMeta: true,
       cacheScope: `${req.user?.id || req.user?._id || ""}:${req.user?.role_id || ""}`,

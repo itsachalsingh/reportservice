@@ -16,6 +16,8 @@ if (!RABBIT_URL) {
 
 const VERIFY_TOKEN_QUEUE = 'verify.token.request';
 const DAILY_INCOME_REPORT_QUEUE = 'daily.income.report.request';
+const DISCONNECTION_REPORT_QUEUE =
+  process.env.DISCONNECTION_REPORT_QUEUE || 'disconnection.report.request';
 const BILL_CHARGE_TRANSACTION_SUMMARY_QUEUE =
   process.env.BILL_CHARGE_TRANSACTION_SUMMARY_QUEUE ||
   'bill.charge.transaction.summary.request';
@@ -51,6 +53,7 @@ async function connect() {
   // Assert request queues (durable because they change state / are important)
   await channel.assertQueue(VERIFY_TOKEN_QUEUE, { durable: true });
   await channel.assertQueue(DAILY_INCOME_REPORT_QUEUE, { durable: true });
+  await channel.assertQueue(DISCONNECTION_REPORT_QUEUE, { durable: true });
   await channel.assertQueue(BILL_CHARGE_TRANSACTION_SUMMARY_QUEUE, { durable: true });
 
   // Exclusive, auto-delete reply queue owned by this connection
@@ -222,6 +225,34 @@ export async function getDailyIncomeReportRPC(input, options = {}) {
       clearTimeout(timer);
       correlationMap.delete(correlationId);
       reject(e);
+    }
+  });
+}
+
+export async function getDisconnectionReportRPC(input = {}, options = {}) {
+  await ensureConnected();
+  const timeoutMs = resolveTimeoutMs(options?.timeoutMs, REPORT_TIMEOUT_MS);
+  return new Promise((resolve, reject) => {
+    const correlationId = randomUUID();
+    const timer = setTimeout(() => {
+      if (correlationMap.has(correlationId)) {
+        correlationMap.delete(correlationId);
+        reject(new Error('Disconnection report timeout'));
+      }
+    }, timeoutMs);
+    correlationMap.set(correlationId, { resolve, reject, timer });
+    try {
+      channel.sendToQueue(DISCONNECTION_REPORT_QUEUE, Buffer.from(JSON.stringify(input)), {
+        replyTo: replyQueue,
+        correlationId,
+        contentType: 'application/json',
+        deliveryMode: 2,
+        headers: { 'x-service': 'reportservice', 'x-op': 'disconnection_report' },
+      });
+    } catch (error) {
+      clearTimeout(timer);
+      correlationMap.delete(correlationId);
+      reject(error);
     }
   });
 }

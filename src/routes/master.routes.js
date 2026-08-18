@@ -5,6 +5,7 @@ import DivisionLegacyArrearReport from "../routes/divisionArrearLegacy.route.js"
 import BillCollectionSummaryReport from "../routes/billCollectionSummary.route.js"
 import BillAmountBreakupSummaryReport from "../routes/billAmountBreakupSummary.route.js"
 import BillChargeSummaryReport from "../routes/billChargeSummary.route.js"
+import DisconnectionRequestReport from "../routes/disconnectionRequestReport.route.js"
 
 async function masterRoutes(fastify, opts) {
 
@@ -31,6 +32,7 @@ async function masterRoutes(fastify, opts) {
   await fastify.register(BillCollectionSummaryReport, { authRoute });
   await fastify.register(BillAmountBreakupSummaryReport, { authRoute });
   await fastify.register(BillChargeSummaryReport, { authRoute });
+  await fastify.register(DisconnectionRequestReport, { authRoute });
 }
 
 export default masterRoutes;

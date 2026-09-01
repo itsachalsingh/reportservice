@@ -181,6 +181,7 @@ export async function getDailyIncomeReportRPC(input, options = {}) {
     limit: input?.limit || 50,
     payment_methods: input?.payment_methods || input?.payment_method || null,
     types: input?.types || input?.type || null,
+    service_type: input?.service_type || input?.serviceType || null,
     status: input?.status || input?.transaction_status || input?.transactionStatus || null,
     area_type: input?.area_type || null,
     max_time_ms: input?.max_time_ms || input?.maxTimeMs || null,

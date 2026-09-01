@@ -78,6 +78,8 @@ const dailyIncomeBody = {
       ],
     },
     type: { type: "string", enum: transactionTypeFilterValues },
+    service_type: { type: "string", maxLength: 120 },
+    serviceType: { type: "string", maxLength: 120 },
     status: { type: "string", enum: transactionStatuses },
   },
 };

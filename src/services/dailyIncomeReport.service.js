@@ -297,6 +297,7 @@ export function buildDailyIncomePayload(input = {}) {
     limit: input?.limit,
     payment_methods: input?.payment_methods || input?.payment_method || null,
     types: normalizeTransactionTypes(input),
+    service_type: input?.service_type || input?.serviceType || null,
     status: input?.status || input?.transaction_status || null,
     area_type: input?.area_type || null,
   };

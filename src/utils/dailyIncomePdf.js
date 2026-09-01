@@ -6,6 +6,9 @@ const ASSETS_DIR = path.resolve(process.cwd(), "assets");
 const asset = (name) => path.join(ASSETS_DIR, name);
 const fontAsset = (name) => path.join(ASSETS_DIR, "fonts", name);
 const WIDE_LANDSCAPE_PAGE = [1200, 595.28];
+const TABLE_FONT_SIZE = 10;
+const SUMMARY_FONT_SIZE = 12;
+const SUMMARY_ITEM_FONT_SIZE = 11;
 
 function money(value) {
   const amount = Math.round(Number(value) || 0);
@@ -384,25 +387,25 @@ export async function createDailyIncomePdf({
 
   function drawSummary() {
     doc
-      .fontSize(10)
+      .fontSize(SUMMARY_FONT_SIZE)
       .font(fontName("bold"))
       .text(totalPaymentText, doc.page.margins.left, y, {
         width: availableWidth,
         align: "left",
       });
 
-    y += 14;
+    y += 17;
 
     paymentMethodItems.forEach((text, i) => {
       doc
-        .fontSize(9)
+        .fontSize(SUMMARY_ITEM_FONT_SIZE)
         .font(fontName("bold"))
         .text(text, doc.page.margins.left + paymentMethodColWidth * i, y, {
           width: paymentMethodColWidth,
         });
     });
 
-    y += 24;
+    y += 27;
   }
 
   /* column definition */
@@ -528,14 +531,18 @@ export async function createDailyIncomePdf({
   function formatNumericCell(key, value, options = {}) {
     const width = Math.max(10, (columnsByKey[key]?.width || 0) - 6);
     const text = money(value);
-    doc.font(fontName(options.bold ? "bold" : "regular")).fontSize(8);
+    doc
+      .font(fontName(options.bold ? "bold" : "regular"))
+      .fontSize(TABLE_FONT_SIZE);
     return splitTextToFit(text, width, true);
   }
 
   function estimateRowHeight(row, options = {}) {
-    if (options.isTableHeader) return 22;
-    let height = 24;
-    doc.font(fontName(options.isHeader ? "bold" : "regular")).fontSize(8);
+    if (options.isTableHeader) return 26;
+    let height = 28;
+    doc
+      .font(fontName(options.isHeader ? "bold" : "regular"))
+      .fontSize(TABLE_FONT_SIZE);
     columns.forEach((col) => {
       if (!wrapKeys.has(col.key)) return;
       const text = normalizeRenderedCellText(row[col.key] ?? "");
@@ -545,7 +552,7 @@ export async function createDailyIncomePdf({
         align,
         lineGap: 0,
       });
-      height = Math.max(height, Math.min(78, Math.ceil(measured) + 6));
+      height = Math.max(height, Math.min(96, Math.ceil(measured) + 6));
     });
     return height;
   }
@@ -564,9 +571,15 @@ export async function createDailyIncomePdf({
         )
         .fill("#e5e7eb");
 
-      doc.fillColor("#111").font(fontName("bold")).fontSize(8);
+      doc
+        .fillColor("#111")
+        .font(fontName("bold"))
+        .fontSize(TABLE_FONT_SIZE);
     } else {
-      doc.fillColor("#111").font(fontName("regular")).fontSize(8);
+      doc
+        .fillColor("#111")
+        .font(fontName("regular"))
+        .fontSize(TABLE_FONT_SIZE);
     }
 
     columns.forEach((col) => {
@@ -618,7 +631,7 @@ export async function createDailyIncomePdf({
     isHeader: true,
     isTableHeader: true,
   });
-  const firstPageRowsStartY = doc.page.margins.top + 60 + 38 + tableHeaderHeight;
+  const firstPageRowsStartY = doc.page.margins.top + 60 + 44 + tableHeaderHeight;
   const nextPageRowsStartY = doc.page.margins.top + 60 + tableHeaderHeight;
 
   function getPageDivisionName(pageRows = []) {

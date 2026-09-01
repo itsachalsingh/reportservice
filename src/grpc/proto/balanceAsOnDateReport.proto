@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package balanceasondate;
+
+service BalanceAsOnDateReportService {
+  rpc GetBalanceAsOnDateReport (BalanceAsOnDateRequest) returns (BalanceAsOnDateResponse);
+}
+
+message BalanceAsOnDateRequest {
+  string as_on_date = 1;
+  string group_by = 2;
+  string department_id = 3;
+  string division_id = 4;
+  string collection_center_id = 5;
+  string scheme_id = 6;
+}
+
+message BalanceAsOnDateRow {
+  string group_id = 1;
+  string group_name = 2;
+  int64 connection_count = 3;
+  double current_water = 4;
+  double current_sewer = 5;
+  double current_meter = 6;
+  double current_late_fee = 7;
+  double current_other = 8;
+  double current_total = 9;
+  double arrear_water = 10;
+  double arrear_sewer = 11;
+  double arrear_meter = 12;
+  double arrear_advance = 13;
+  double arrear_other = 14;
+  double arrear_total = 15;
+  double grand_total = 16;
+}
+
+message BalanceAsOnDateResponse {
+  bool success = 1;
+  string message = 2;
+  string as_on_date = 3;
+  string group_by = 4;
+  repeated BalanceAsOnDateRow rows = 5;
+  BalanceAsOnDateRow totals = 6;
+}

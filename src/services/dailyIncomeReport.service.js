@@ -281,6 +281,7 @@ export function buildDailyIncomePayload(input = {}) {
     start_date: input?.start_date || input?.fromDate,
     end_date: input?.end_date || input?.toDate,
     report_title: input?.report_title || null,
+    search: typeof input?.search === "string" ? input.search.trim() : "",
     collection_center:
       input?.collection_center ||
       input?.collection_center_id ||

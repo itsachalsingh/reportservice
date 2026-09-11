@@ -35,6 +35,7 @@ const dailyIncomeBody = {
     fromDate: { type: "string", format: "date" },
     toDate: { type: "string", format: "date" },
     report_title: { type: "string" },
+    search: { type: "string" },
     collection_center: { type: "string" },
     collection_center_id: { type: "string" },
     collectionCenter: { type: "string" },

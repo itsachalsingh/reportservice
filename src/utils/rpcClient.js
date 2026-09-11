@@ -169,6 +169,7 @@ export async function getDailyIncomeReportRPC(input, options = {}) {
 
   const payload = {
     start_date: input?.start_date,
+    search: typeof input?.search === "string" ? input.search.trim() : "",
     end_date: input?.end_date,
     collection_center: input?.collection_center || input?.collection_center_id || null,
     division: input?.division || input?.division_id || null,
@@ -263,6 +264,7 @@ export async function getBillChargeTransactionSummaryRPC(input, options = {}) {
 
   const payload = {
     start_date: input?.start_date,
+    search: typeof input?.search === "string" ? input.search.trim() : "",
     end_date: input?.end_date,
     from_date: input?.from_date,
     to_date: input?.to_date,

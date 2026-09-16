@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
 import { getBillChargeTransactionSummaryRPC } from "../utils/rpcClient.js";
+import { resolveBillChargeBreakup } from "../utils/billChargeTotals.js";
 
 const reportBody = {
   type: "object",
@@ -140,8 +141,8 @@ function buildMonthlyRanges(startDate, endDate) {
 }
 
 function toMonthlyReportRow(range, totals = {}) {
-  const paid = totals?.source_totals?.paid_breakup || {};
   const sourceTotals = totals?.source_totals || {};
+  const paid = resolveBillChargeBreakup(totals);
   const waterArrear = toRoundedRupees(paid?.water_arrear_charges);
   const sewerArrear = toRoundedRupees(paid?.sewer_arrear_charges);
   const meterArrear = toRoundedRupees(paid?.meter_arrear_charges);

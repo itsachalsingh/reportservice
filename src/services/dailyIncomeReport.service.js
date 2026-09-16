@@ -3,6 +3,7 @@ import {
   getDailyIncomeReportRPC,
 } from "../utils/rpcClient.js";
 import { createDailyIncomePdf } from "../utils/dailyIncomePdf.js";
+import { resolveBillChargeBreakup } from "../utils/billChargeTotals.js";
 import { getConnectionByConsumerCode } from "../utils/grpc/connectionClient.js";
 import { getDivisionById } from "../utils/grpc/divisionClient.js";
 
@@ -182,8 +183,8 @@ export function allocateDailyIncomePdfDetails(details = []) {
 }
 
 export function buildPdfTotalsFromBillChargeSummary(totals = {}) {
-  const paid = totals?.source_totals?.paid_breakup || {};
   const source = totals?.source_totals || {};
+  const paid = resolveBillChargeBreakup(totals);
   const water = reportMoney(paid?.water_charges);
   const sewer = reportMoney(paid?.sewer_charges);
   const meter = reportMoney(paid?.meter_charges);

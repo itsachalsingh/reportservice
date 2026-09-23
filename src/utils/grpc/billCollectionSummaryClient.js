@@ -49,7 +49,10 @@ function createClient(target) {
   return new proto.BillCollectionSummaryReportService(
     target,
     grpc.credentials.createInsecure(),
-    { "grpc.max_receive_message_length": -1 }
+    {
+      "grpc.max_receive_message_length": -1,
+      "grpc.max_send_message_length": -1,
+    }
   );
 }
 
@@ -154,6 +157,43 @@ export async function fetchBillCollectionSummary(input = {}) {
       return await invokeSummary(getClient(), payload);
     } catch (retryError) {
       throw toDebugError(retryError, { phase: "retry_call" });
+    }
+  }
+}
+
+export async function fetchDivisionCollectionBillingSummary(input = {}) {
+  const payload = {
+    department: cleanString(input.department),
+    department_id: cleanString(input.department_id || input.departmentId),
+    departmentId: cleanString(input.departmentId),
+    division: cleanString(input.division),
+    division_id: cleanString(input.division_id || input.divisionId),
+    divisionId: cleanString(input.divisionId),
+  };
+
+  const invoke = (client) =>
+    new Promise((resolve, reject) => {
+      client.GetDivisionCollectionReport(payload, (error, response) => {
+        if (error) return reject(error);
+        resolve(response || {});
+      });
+    });
+
+  try {
+    return await invoke(getClient());
+  } catch (error) {
+    if (!isGrpcUnavailable(error)) {
+      throw toDebugError(error, {
+        phase: "division_collection_initial_call",
+      });
+    }
+    clientInstance = null;
+    try {
+      return await invoke(getClient());
+    } catch (retryError) {
+      throw toDebugError(retryError, {
+        phase: "division_collection_retry_call",
+      });
     }
   }
 }

@@ -21,6 +21,9 @@ const DISCONNECTION_REPORT_QUEUE =
 const BILL_CHARGE_TRANSACTION_SUMMARY_QUEUE =
   process.env.BILL_CHARGE_TRANSACTION_SUMMARY_QUEUE ||
   'bill.charge.transaction.summary.request';
+const DIVISION_COLLECTION_PAYMENT_SUMMARY_QUEUE =
+  process.env.DIVISION_COLLECTION_PAYMENT_SUMMARY_QUEUE ||
+  'division.collection.payment.summary.request';
 const REPORT_TIMEOUT_MS = Number(
   process.env.DAILY_INCOME_REPORT_TIMEOUT_MS ||
     process.env.REPORT_TIMEOUT_MS ||
@@ -55,6 +58,7 @@ async function connect() {
   await channel.assertQueue(DAILY_INCOME_REPORT_QUEUE, { durable: true });
   await channel.assertQueue(DISCONNECTION_REPORT_QUEUE, { durable: true });
   await channel.assertQueue(BILL_CHARGE_TRANSACTION_SUMMARY_QUEUE, { durable: true });
+  await channel.assertQueue(DIVISION_COLLECTION_PAYMENT_SUMMARY_QUEUE, { durable: true });
 
   // Exclusive, auto-delete reply queue owned by this connection
   const asserted = await channel.assertQueue('', { exclusive: true, autoDelete: true });
@@ -314,6 +318,56 @@ export async function getBillChargeTransactionSummaryRPC(input, options = {}) {
       clearTimeout(timer);
       correlationMap.delete(correlationId);
       reject(e);
+    }
+  });
+}
+
+export async function getDivisionCollectionPaymentSummaryRPC(
+  input = {},
+  options = {}
+) {
+  await ensureConnected();
+
+  const payload = {
+    bill_groups: Array.isArray(input?.bill_groups)
+      ? input.bill_groups
+      : Array.isArray(input?.billGroups)
+        ? input.billGroups
+        : [],
+    max_time_ms: input?.max_time_ms || input?.maxTimeMs || null,
+  };
+  const timeoutMs = resolveTimeoutMs(options?.timeoutMs, REPORT_TIMEOUT_MS);
+
+  return new Promise((resolve, reject) => {
+    const correlationId = randomUUID();
+    const timer = setTimeout(() => {
+      if (correlationMap.has(correlationId)) {
+        correlationMap.delete(correlationId);
+        reject(new Error('Division collection payment summary timeout'));
+      }
+    }, timeoutMs);
+
+    correlationMap.set(correlationId, { resolve, reject, timer });
+
+    try {
+      channel.sendToQueue(
+        DIVISION_COLLECTION_PAYMENT_SUMMARY_QUEUE,
+        Buffer.from(JSON.stringify(payload)),
+        {
+          replyTo: replyQueue,
+          correlationId,
+          contentType: 'application/json',
+          deliveryMode: 2,
+          headers: {
+            'x-service': 'reportservice',
+            'x-op': 'division_collection_payment_summary',
+          },
+        }
+      );
+    } catch (error) {
+      clearTimeout(timer);
+      correlationMap.delete(correlationId);
+      reject(error);
     }
   });
 }

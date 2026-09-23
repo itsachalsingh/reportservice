@@ -4,6 +4,34 @@ package billcollectionsummary;
 
 service BillCollectionSummaryReportService {
   rpc GetBillCollectionSummary (BillCollectionSummaryRequest) returns (BillCollectionSummaryResponse);
+  rpc GetDivisionCollectionReport (DivisionCollectionReportRequest) returns (DivisionCollectionReportResponse);
+}
+
+message DivisionCollectionReportRequest {
+  string department = 1;
+  string department_id = 2;
+  string departmentId = 3;
+  string division = 4;
+  string division_id = 5;
+  string divisionId = 6;
+}
+
+message DivisionCollectionBillingRow {
+  string division_id = 1;
+  string division_name = 2;
+  int64 total_bills = 3;
+  int64 pending_bills = 4;
+  int64 total_unpaid_bills = 5;
+  double total_amount = 6;
+  double total_current_amount = 7;
+  double total_old_arrear_amount = 8;
+  repeated string bill_numbers = 9;
+}
+
+message DivisionCollectionReportResponse {
+  bool success = 1;
+  string message = 2;
+  repeated DivisionCollectionBillingRow rows = 3;
 }
 
 message BillCollectionSummaryRequest {

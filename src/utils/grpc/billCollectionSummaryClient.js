@@ -169,6 +169,10 @@ export async function fetchDivisionCollectionBillingSummary(input = {}) {
     division: cleanString(input.division),
     division_id: cleanString(input.division_id || input.divisionId),
     divisionId: cleanString(input.divisionId),
+    start_date: cleanString(input.start_date || input.startDate),
+    startDate: cleanString(input.startDate),
+    end_date: cleanString(input.end_date || input.endDate),
+    endDate: cleanString(input.endDate),
   };
 
   const invoke = (client) =>

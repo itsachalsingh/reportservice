@@ -14,6 +14,10 @@ message DivisionCollectionReportRequest {
   string division = 4;
   string division_id = 5;
   string divisionId = 6;
+  string start_date = 7;
+  string startDate = 8;
+  string end_date = 9;
+  string endDate = 10;
 }
 
 message DivisionCollectionBillingRow {

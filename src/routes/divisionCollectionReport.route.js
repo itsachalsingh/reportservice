@@ -11,8 +11,10 @@ import {
   getDivisionsByDepartment,
 } from "../utils/grpc/divisionClient.js";
 import {
+  buildDivisionCollectionScopes,
   buildDivisionCollectionTotals,
   mergeDivisionCollectionRows,
+  resolveDivisionCollectionPeriods,
   toDivisionCollectionSpreadsheetRow,
 } from "../services/divisionCollectionReport.service.js";
 
@@ -26,6 +28,17 @@ const reportBody = {
     division: { type: "string" },
     division_id: { type: "string" },
     divisionId: { type: "string" },
+    start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    startDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    endDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    financial_year: { type: "string" },
+    financialYear: { type: "string" },
+    fy: { type: "string" },
+    as_on_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    asOnDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    include_today: { type: "boolean" },
+    includeToday: { type: "boolean" },
   },
 };
 
@@ -63,7 +76,16 @@ async function fetchMasterDivisions(body = {}) {
 }
 
 export async function buildDivisionCollectionReport(body = {}) {
-  const billing = await fetchDivisionCollectionBillingSummary(body);
+  const collectionPeriod = resolveDivisionCollectionPeriods(body);
+  const periodRequest = {
+    ...body,
+    start_date: collectionPeriod.start_date,
+    end_date: collectionPeriod.end_date,
+  };
+  const [billing, masterDivisions] = await Promise.all([
+    fetchDivisionCollectionBillingSummary(periodRequest),
+    fetchMasterDivisions(body),
+  ]);
   if (!billing?.success) {
     throw new Error(
       billing?.message || "Failed to fetch division collection billing summary"
@@ -71,24 +93,26 @@ export async function buildDivisionCollectionReport(body = {}) {
   }
 
   const billingRows = Array.isArray(billing?.rows) ? billing.rows : [];
-  const billGroups = billingRows.map((row) => ({
-    division_id: cleanString(row?.division_id) || "__unassigned__",
-    bill_numbers: Array.isArray(row?.bill_numbers) ? row.bill_numbers : [],
-  }));
-
-  const [paymentRpc, masterDivisions] = await Promise.all([
-    billGroups.length
-      ? getDivisionCollectionPaymentSummaryRPC(
-          { bill_groups: billGroups },
-          {
-            timeoutMs: Number(
-              process.env.DIVISION_COLLECTION_REPORT_TIMEOUT_MS || 120000
-            ),
-          }
-        )
-      : Promise.resolve({ ok: true, data: { rows: [] } }),
-    fetchMasterDivisions(body),
-  ]);
+  const divisionScopes = buildDivisionCollectionScopes({
+    billingRows,
+    masterDivisions,
+  });
+  const paymentRpc = divisionScopes.length
+    ? await getDivisionCollectionPaymentSummaryRPC(
+        {
+          division_scopes: divisionScopes,
+          start_date: collectionPeriod.start_date,
+          end_date: collectionPeriod.end_date,
+          department: body?.department,
+          department_id: body?.department_id || body?.departmentId,
+        },
+        {
+          timeoutMs: Number(
+            process.env.DIVISION_COLLECTION_REPORT_TIMEOUT_MS || 120000
+          ),
+        }
+      )
+    : { ok: true, data: { rows: [] } };
 
   if (!paymentRpc?.ok) {
     throw new Error(
@@ -116,6 +140,11 @@ export async function buildDivisionCollectionReport(body = {}) {
     success: true,
     message: "Division-wise collection report generated successfully",
     latest_bill_per_connection: true,
+    latest_bill_scope: "requested_period",
+    collection_basis: "completed_transactions_for_selected_latest_bills",
+    collection_cutoff_date: collectionPeriod.cutoff_date,
+    collection_includes_today: collectionPeriod.includes_today,
+    collection_periods: collectionPeriod.periods,
     rows,
     totals: buildDivisionCollectionTotals(rows),
   };

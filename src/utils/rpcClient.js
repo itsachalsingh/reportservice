@@ -329,11 +329,15 @@ export async function getDivisionCollectionPaymentSummaryRPC(
   await ensureConnected();
 
   const payload = {
-    bill_groups: Array.isArray(input?.bill_groups)
-      ? input.bill_groups
-      : Array.isArray(input?.billGroups)
-        ? input.billGroups
+    division_scopes: Array.isArray(input?.division_scopes)
+      ? input.division_scopes
+      : Array.isArray(input?.divisionScopes)
+        ? input.divisionScopes
         : [],
+    start_date: input?.start_date || input?.startDate || null,
+    end_date: input?.end_date || input?.endDate || null,
+    department: input?.department || null,
+    department_id: input?.department_id || input?.departmentId || null,
     max_time_ms: input?.max_time_ms || input?.maxTimeMs || null,
   };
   const timeoutMs = resolveTimeoutMs(options?.timeoutMs, REPORT_TIMEOUT_MS);

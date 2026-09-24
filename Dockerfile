@@ -35,4 +35,4 @@ USER nodeapp
 
 EXPOSE 3009
 
-CMD ["node", "src/index.js"]
+CMD ["node", "src/start.js"]

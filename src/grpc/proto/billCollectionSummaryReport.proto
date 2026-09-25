@@ -18,6 +18,19 @@ message DivisionCollectionReportRequest {
   string startDate = 8;
   string end_date = 9;
   string endDate = 10;
+  string collection_center = 11;
+  string collection_center_id = 12;
+  string collectionCenter = 13;
+  string collectionCenterId = 14;
+  string scheme = 15;
+  string scheme_id = 16;
+  string schemeId = 17;
+  string area_type = 18;
+  string areaType = 19;
+  string billing_cycle = 20;
+  string billingCycle = 21;
+  string bill_cycle = 22;
+  string billCycle = 23;
 }
 
 message DivisionCollectionBillingRow {

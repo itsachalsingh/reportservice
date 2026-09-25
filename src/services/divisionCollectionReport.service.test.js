@@ -5,6 +5,7 @@ import {
   buildDivisionCollectionScopes,
   buildDivisionCollectionTotals,
   mergeDivisionCollectionRows,
+  normalizeDivisionCollectionFilters,
   resolveDivisionCollectionPeriods,
   toDivisionCollectionSpreadsheetRow,
 } from "./divisionCollectionReport.service.js";
@@ -133,6 +134,38 @@ test("supports a requested financial cycle and explicit dates", () => {
   }, now);
   assert.equal(custom.start_date, "2025-02-01");
   assert.equal(custom.end_date, "2026-03-31");
+
+  const dateAliases = resolveDivisionCollectionPeriods({
+    date_from: "2025-05-01",
+    date_to: "2025-05-31",
+  }, now);
+  assert.equal(dateAliases.start_date, "2025-05-01");
+  assert.equal(dateAliases.end_date, "2025-05-31");
+});
+
+test("normalizes collection report filters and treats All as unfiltered", () => {
+  assert.deepEqual(
+    normalizeDivisionCollectionFilters({
+      department_id: " department-1 ",
+      division_id: "All",
+      collectionCenterId: "center-1",
+      scheme: "scheme-1",
+      areaType: "RURAL",
+      billCycle: 3,
+      paymentGateway: ["payu", " All ", ""],
+      paymentStatus: "FAILED",
+    }),
+    {
+      department_id: "department-1",
+      division_id: "",
+      collection_center_id: "center-1",
+      scheme_id: "scheme-1",
+      area_type: "rural",
+      billing_cycle: "3",
+      payment_gateway: ["payu"],
+      payment_status: "failed",
+    }
+  );
 });
 
 test("builds payment scopes from billing and master divisions", () => {

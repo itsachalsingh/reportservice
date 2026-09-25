@@ -14,9 +14,20 @@ import {
   buildDivisionCollectionScopes,
   buildDivisionCollectionTotals,
   mergeDivisionCollectionRows,
+  normalizeDivisionCollectionFilters,
   resolveDivisionCollectionPeriods,
   toDivisionCollectionSpreadsheetRow,
 } from "../services/divisionCollectionReport.service.js";
+
+const PAYMENT_STATUSES = [
+  "all",
+  "pending",
+  "completed",
+  "failed",
+  "dishonor",
+  "cancelled",
+  "canceled",
+];
 
 const reportBody = {
   type: "object",
@@ -28,10 +39,27 @@ const reportBody = {
     division: { type: "string" },
     division_id: { type: "string" },
     divisionId: { type: "string" },
+    collection_center: { type: "string" },
+    collection_center_id: { type: "string" },
+    collectionCenter: { type: "string" },
+    collectionCenterId: { type: "string" },
+    scheme: { type: "string" },
+    scheme_id: { type: "string" },
+    schemeId: { type: "string" },
+    area_type: { type: "string", enum: ["urban", "rural", "all"] },
+    areaType: { type: "string", enum: ["urban", "rural", "all"] },
     start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
     startDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    date_from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    dateFrom: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    from_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
     end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
     endDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    date_to: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    dateTo: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    to_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    to: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
     financial_year: { type: "string" },
     financialYear: { type: "string" },
     fy: { type: "string" },
@@ -39,6 +67,28 @@ const reportBody = {
     asOnDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
     include_today: { type: "boolean" },
     includeToday: { type: "boolean" },
+    billing_cycle: { anyOf: [{ type: "string" }, { type: "integer", minimum: 1 }] },
+    billingCycle: { anyOf: [{ type: "string" }, { type: "integer", minimum: 1 }] },
+    bill_cycle: { anyOf: [{ type: "string" }, { type: "integer", minimum: 1 }] },
+    billCycle: { anyOf: [{ type: "string" }, { type: "integer", minimum: 1 }] },
+    payment_gateway: {
+      anyOf: [
+        { type: "string" },
+        { type: "array", items: { type: "string" }, minItems: 1 },
+      ],
+    },
+    paymentGateway: {
+      anyOf: [
+        { type: "string" },
+        { type: "array", items: { type: "string" }, minItems: 1 },
+      ],
+    },
+    gateway: { type: "string" },
+    payment_status: { type: "string", enum: PAYMENT_STATUSES },
+    paymentStatus: { type: "string", enum: PAYMENT_STATUSES },
+    transaction_status: { type: "string", enum: PAYMENT_STATUSES },
+    transactionStatus: { type: "string", enum: PAYMENT_STATUSES },
+    status: { type: "string", enum: PAYMENT_STATUSES },
   },
 };
 
@@ -50,11 +100,12 @@ function cleanString(value) {
 }
 
 async function fetchMasterDivisions(body = {}) {
+  const filters = normalizeDivisionCollectionFilters(body);
   const departmentId = cleanString(
-    body?.department_id || body?.departmentId || body?.department
+    filters.department_id
   );
   const divisionId = cleanString(
-    body?.division_id || body?.divisionId || body?.division
+    filters.division_id
   );
 
   try {
@@ -77,8 +128,11 @@ async function fetchMasterDivisions(body = {}) {
 
 export async function buildDivisionCollectionReport(body = {}) {
   const collectionPeriod = resolveDivisionCollectionPeriods(body);
+  const filters = normalizeDivisionCollectionFilters(body);
+  const effectivePaymentStatus = filters.payment_status || "completed";
   const periodRequest = {
     ...body,
+    ...filters,
     start_date: collectionPeriod.start_date,
     end_date: collectionPeriod.end_date,
   };
@@ -103,8 +157,9 @@ export async function buildDivisionCollectionReport(body = {}) {
           division_scopes: divisionScopes,
           start_date: collectionPeriod.start_date,
           end_date: collectionPeriod.end_date,
-          department: body?.department,
-          department_id: body?.department_id || body?.departmentId,
+          department_id: filters.department_id,
+          payment_gateway: filters.payment_gateway,
+          payment_status: filters.payment_status,
         },
         {
           timeoutMs: Number(
@@ -141,10 +196,19 @@ export async function buildDivisionCollectionReport(body = {}) {
     message: "Division-wise collection report generated successfully",
     latest_bill_per_connection: true,
     latest_bill_scope: "requested_period",
-    collection_basis: "completed_transactions_for_selected_latest_bills",
+    collection_basis: `${effectivePaymentStatus}_transactions_for_selected_latest_bills`,
     collection_cutoff_date: collectionPeriod.cutoff_date,
     collection_includes_today: collectionPeriod.includes_today,
     collection_periods: collectionPeriod.periods,
+    filters: {
+      ...filters,
+      financial_year: cleanString(
+        body?.financial_year || body?.financialYear || body?.fy
+      ) || null,
+      start_date: collectionPeriod.start_date,
+      end_date: collectionPeriod.end_date,
+      payment_status: effectivePaymentStatus,
+    },
     rows,
     totals: buildDivisionCollectionTotals(rows),
   };

@@ -338,6 +338,15 @@ export async function getDivisionCollectionPaymentSummaryRPC(
     end_date: input?.end_date || input?.endDate || null,
     department: input?.department || null,
     department_id: input?.department_id || input?.departmentId || null,
+    payment_gateway:
+      input?.payment_gateway ?? input?.paymentGateway ?? input?.gateway ?? null,
+    payment_status:
+      input?.payment_status ??
+      input?.paymentStatus ??
+      input?.transaction_status ??
+      input?.transactionStatus ??
+      input?.status ??
+      null,
     max_time_ms: input?.max_time_ms || input?.maxTimeMs || null,
   };
   const timeoutMs = resolveTimeoutMs(options?.timeoutMs, REPORT_TIMEOUT_MS);

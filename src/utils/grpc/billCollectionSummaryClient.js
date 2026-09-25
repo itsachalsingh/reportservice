@@ -173,6 +173,25 @@ export async function fetchDivisionCollectionBillingSummary(input = {}) {
     startDate: cleanString(input.startDate),
     end_date: cleanString(input.end_date || input.endDate),
     endDate: cleanString(input.endDate),
+    collection_center: cleanString(
+      input.collection_center || input.collectionCenter
+    ),
+    collection_center_id: cleanString(
+      input.collection_center_id || input.collectionCenterId
+    ),
+    collectionCenter: cleanString(input.collectionCenter),
+    collectionCenterId: cleanString(input.collectionCenterId),
+    scheme: cleanString(input.scheme),
+    scheme_id: cleanString(input.scheme_id || input.schemeId),
+    schemeId: cleanString(input.schemeId),
+    area_type: cleanString(input.area_type || input.areaType),
+    areaType: cleanString(input.areaType),
+    billing_cycle: cleanString(
+      input.billing_cycle || input.billingCycle || input.bill_cycle || input.billCycle
+    ),
+    billingCycle: cleanString(input.billingCycle),
+    bill_cycle: cleanString(input.bill_cycle),
+    billCycle: cleanString(input.billCycle),
   };
 
   const invoke = (client) =>

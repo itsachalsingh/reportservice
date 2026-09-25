@@ -20,6 +20,55 @@ function cleanString(value) {
   return value == null ? "" : String(value).trim();
 }
 
+function optionalFilter(value) {
+  const cleaned = cleanString(value);
+  return cleaned.toLowerCase() === "all" ? "" : cleaned;
+}
+
+export function normalizeDivisionCollectionFilters(input = {}) {
+  const paymentGateway =
+    input?.payment_gateway ?? input?.paymentGateway ?? input?.gateway;
+  const paymentStatus =
+    input?.payment_status ??
+    input?.paymentStatus ??
+    input?.transaction_status ??
+    input?.transactionStatus ??
+    input?.status;
+
+  return {
+    department_id: optionalFilter(
+      input?.department_id || input?.departmentId || input?.department
+    ),
+    division_id: optionalFilter(
+      input?.division_id || input?.divisionId || input?.division
+    ),
+    collection_center_id: optionalFilter(
+      input?.collection_center_id ||
+        input?.collectionCenterId ||
+        input?.collection_center ||
+        input?.collectionCenter
+    ),
+    scheme_id: optionalFilter(
+      input?.scheme_id || input?.schemeId || input?.scheme
+    ),
+    area_type: optionalFilter(input?.area_type || input?.areaType).toLowerCase(),
+    billing_cycle: optionalFilter(
+      input?.billing_cycle ||
+        input?.billingCycle ||
+        input?.bill_cycle ||
+        input?.billCycle
+    ),
+    payment_gateway: Array.isArray(paymentGateway)
+      ? paymentGateway
+          .map(optionalFilter)
+          .filter(Boolean)
+      : optionalFilter(paymentGateway),
+    // Preserve an explicit "all": the payment service uses it to remove its
+    // default completed-only restriction. An omitted status remains completed.
+    payment_status: cleanString(paymentStatus).toLowerCase(),
+  };
+}
+
 function number(value) {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? Math.round(parsed) : 0;
@@ -83,11 +132,18 @@ export function resolveDivisionCollectionPeriods(input = {}, now = new Date()) {
     ? today
     : addDateOnlyDays(today, -1);
   const requestedStart = cleanString(
-    input?.start_date || input?.startDate || input?.from_date || input?.from
+    input?.start_date ||
+      input?.startDate ||
+      input?.date_from ||
+      input?.dateFrom ||
+      input?.from_date ||
+      input?.from
   );
   const requestedEnd = cleanString(
     input?.end_date ||
       input?.endDate ||
+      input?.date_to ||
+      input?.dateTo ||
       input?.to_date ||
       input?.to ||
       input?.as_on_date ||

@@ -29,7 +29,17 @@ const PAYMENT_STATUSES = [
   "canceled",
 ];
 
-const reportBody = {
+// Date filters are optional. Accept the empty/null values commonly emitted by
+// report filter forms while retaining YYYY-MM-DD validation when supplied.
+const OPTIONAL_DATE = {
+  anyOf: [
+    { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    { type: "string", maxLength: 0 },
+    { type: "null" },
+  ],
+};
+
+export const divisionCollectionReportBodySchema = {
   type: "object",
   additionalProperties: false,
   properties: {
@@ -48,18 +58,18 @@ const reportBody = {
     schemeId: { type: "string" },
     area_type: { type: "string", enum: ["urban", "rural", "all"] },
     areaType: { type: "string", enum: ["urban", "rural", "all"] },
-    start_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    startDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    date_from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    dateFrom: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    from_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    from: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    end_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    endDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    date_to: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    dateTo: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    to_date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-    to: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+    start_date: OPTIONAL_DATE,
+    startDate: OPTIONAL_DATE,
+    date_from: OPTIONAL_DATE,
+    dateFrom: OPTIONAL_DATE,
+    from_date: OPTIONAL_DATE,
+    from: OPTIONAL_DATE,
+    end_date: OPTIONAL_DATE,
+    endDate: OPTIONAL_DATE,
+    date_to: OPTIONAL_DATE,
+    dateTo: OPTIONAL_DATE,
+    to_date: OPTIONAL_DATE,
+    to: OPTIONAL_DATE,
     financial_year: { type: "string" },
     financialYear: { type: "string" },
     fy: { type: "string" },
@@ -295,7 +305,7 @@ async function routes(fastify, opts) {
   const { authRoute } = opts;
   const schema = {
     tags: ["Collection Report"],
-    body: reportBody,
+    body: divisionCollectionReportBodySchema,
   };
 
   fastify.post(

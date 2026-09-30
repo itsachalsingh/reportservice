@@ -51,6 +51,20 @@ const dailyIncomeBody = {
     revenue_unit_id: { type: "string" },
     ledger_id: { type: "string" },
     lane_id: { type: "string" },
+    created_by: {
+      anyOf: [
+        { type: "string", pattern: "^[a-fA-F0-9]{24}$" },
+        { type: "string", maxLength: 0 },
+        { type: "null" },
+      ],
+    },
+    createdBy: {
+      anyOf: [
+        { type: "string", pattern: "^[a-fA-F0-9]{24}$" },
+        { type: "string", maxLength: 0 },
+        { type: "null" },
+      ],
+    },
     page: { type: "integer", minimum: 1 },
     limit: { type: "integer", minimum: 1, maximum: 500 },
     area_type: { type: "string", enum: ["urban", "rural", "all"] },

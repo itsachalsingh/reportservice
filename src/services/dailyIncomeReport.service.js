@@ -295,6 +295,7 @@ export function buildDailyIncomePayload(input = {}) {
     revenue_unit_id: input?.revenue_unit_id || null,
     ledger_id: input?.ledger_id || null,
     lane_id: input?.lane_id || null,
+    created_by: input?.created_by || input?.createdBy || null,
     page: input?.page,
     limit: input?.limit,
     payment_methods: input?.payment_methods || input?.payment_method || null,

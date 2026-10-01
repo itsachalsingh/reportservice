@@ -142,6 +142,7 @@ export async function fetchBillCollectionSummary(input = {}) {
     groupByCollectionCenter: Boolean(
       input.groupByCollectionCenter ?? input.group_by_collection_center ?? true
     ),
+    include_breakup_details: input.include_breakup_details === true,
     group_by_scheme: Boolean(input.group_by_scheme ?? input.groupByScheme ?? true),
     groupByScheme: Boolean(input.groupByScheme ?? input.group_by_scheme ?? true),
   };

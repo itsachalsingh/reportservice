@@ -87,6 +87,7 @@ message BillCollectionSummaryRequest {
   bool groupByCollectionCenter = 33;
   bool group_by_scheme = 34;
   bool groupByScheme = 35;
+  bool include_breakup_details = 36;
 }
 
 message BillCollectionSummaryFilters {
@@ -145,7 +146,16 @@ message BillCollectionSchemeSummaryRow {
   repeated string bill_months = 11;
 }
 
+message BillAmountBreakupGroup {
+  string group_id = 1;
+  BillCollectionSummaryData totals = 2;
+}
+
 message BillCollectionSummaryData {
+  bool breakup_details_available = 77;
+  repeated BillAmountBreakupGroup division_breakup = 78;
+  repeated BillAmountBreakupGroup collection_center_breakup = 79;
+  repeated BillAmountBreakupGroup scheme_breakup = 80;
   int64 total_consumers = 1;
   int64 total_bill_generated_count = 2;
   int64 remaining_bill_generated_count = 3;

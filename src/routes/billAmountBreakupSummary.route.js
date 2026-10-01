@@ -629,43 +629,20 @@ export function normalizeScopedGroupRows({
     });
 }
 
-async function buildGroupWiseDetails({
-  rows = [],
-  type = "",
-  basePayload = {},
-}) {
-  if (!Array.isArray(rows) || !rows.length) return [];
-
-  const details = await Promise.all(
-    rows.map(async (row) => {
-      const identity = rowIdentity(row, type);
-      if (!identity.id) return null;
-
-      const payload = {
-        ...basePayload,
-        [identity.idField]: identity.id,
-        [identity.nameField]: identity.name,
-      };
-      if (identity.camelIdField) {
-        payload[identity.camelIdField] = identity.id;
-      }
-      if (identity.camelNameField) {
-        payload[identity.camelNameField] = identity.name;
-      }
-
-      const summary = await fetchBillCollectionSummary(payload);
-
-      return toBreakupDetailsRow({
-        summary,
-        id: identity.id,
-        name: identity.name,
-        idKey: identity.idKey,
-        nameKey: identity.nameKey,
-      });
-    })
-  );
-
-  return details.filter(Boolean);
+export function buildGroupWiseDetails({ rows = [], type = '', summary = {} }) {
+  if (summary?.data?.breakup_details_available !== true) {
+    throw new Error('Billing service must be updated to support grouped bill breakup details');
+  }
+  const totalsById = new Map((summary.data[type + '_breakup'] || [])
+    .map(row => [cleanString(row.group_id), row.totals || {}]));
+  return rows.map(row => {
+    const identity = rowIdentity(row, type);
+    return toBreakupDetailsRow({
+      summary: { data: totalsById.get(identity.id) || {} },
+      id: identity.id, name: identity.name,
+      idKey: identity.idKey, nameKey: identity.nameKey,
+    });
+  });
 }
 
 async function buildBillAmountBreakupSummaryResponse(
@@ -697,21 +674,13 @@ async function buildBillAmountBreakupSummaryResponse(
 
   const payload = {
     ...normalizedBody,
+    include_breakup_details: true,
     group_by_division: groupByDivision,
     groupByDivision: groupByDivision,
     group_by_collection_center: groupByCollectionCenter,
     groupByCollectionCenter: groupByCollectionCenter,
     group_by_scheme: groupByScheme,
     groupByScheme: groupByScheme,
-  };
-  const totalsOnlyPayload = {
-    ...normalizedBody,
-    group_by_division: false,
-    groupByDivision: false,
-    group_by_collection_center: false,
-    groupByCollectionCenter: false,
-    group_by_scheme: false,
-    groupByScheme: false,
   };
 
   const departmentId = cleanString(
@@ -784,24 +753,24 @@ async function buildBillAmountBreakupSummaryResponse(
     : [];
 
   const divisionWiseDetails = groupByDivision
-    ? await buildGroupWiseDetails({
+    ? buildGroupWiseDetails({
         rows: divisionRows,
         type: "division",
-        basePayload: totalsOnlyPayload,
+        summary,
       })
     : [];
   const collectionCenterWiseDetails = groupByCollectionCenter
-    ? await buildGroupWiseDetails({
+    ? buildGroupWiseDetails({
         rows: collectionCenterRows,
         type: "collection_center",
-        basePayload: totalsOnlyPayload,
+        summary,
       })
     : [];
   const schemeWiseDetails = groupByScheme
-    ? await buildGroupWiseDetails({
+    ? buildGroupWiseDetails({
         rows: schemeRows,
         type: "scheme",
-        basePayload: totalsOnlyPayload,
+        summary,
       })
     : [];
 

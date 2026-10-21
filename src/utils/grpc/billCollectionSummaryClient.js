@@ -221,3 +221,22 @@ export async function fetchDivisionCollectionBillingSummary(input = {}) {
     }
   }
 }
+
+export function fetchLatestVillageBillingRows(input = {}) {
+  const client = getClient();
+  return new Promise((resolve, reject) => {
+    client.GetLatestVillageBillingRows({
+      department_id: cleanString(input.department_id),
+      consumer_codes: Array.isArray(input.consumer_codes) ? input.consumer_codes.map(cleanString) : [],
+      start_month: cleanString(input.start_month),
+      end_month: cleanString(input.end_month),
+    }, { deadline: Date.now() + Number(process.env.VILLAGE_REPORT_BILLING_RPC_TIMEOUT_MS || 120000) }, (error, response) => {
+      if (error) {
+        const err = new Error(error?.message || "Failed to fetch latest village billing rows");
+        err.code = error.code;
+        return reject(err);
+      }
+      resolve(response || { rows: [] });
+    });
+  });
+}

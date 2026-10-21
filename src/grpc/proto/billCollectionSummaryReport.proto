@@ -5,6 +5,24 @@ package billcollectionsummary;
 service BillCollectionSummaryReportService {
   rpc GetBillCollectionSummary (BillCollectionSummaryRequest) returns (BillCollectionSummaryResponse);
   rpc GetDivisionCollectionReport (DivisionCollectionReportRequest) returns (DivisionCollectionReportResponse);
+  rpc GetLatestVillageBillingRows (LatestVillageBillingRowsRequest) returns (LatestVillageBillingRowsResponse);
+}
+
+message LatestVillageBillingRowsRequest {
+  string department_id = 1;
+  repeated string consumer_codes = 2;
+  string start_month = 3;
+  string end_month = 4;
+}
+message LatestVillageBillingRow {
+  string consumer_code = 1;
+  string start_month = 2;
+  string end_month = 3;
+  string bill_status = 4;
+  string bill_date = 5;
+}
+message LatestVillageBillingRowsResponse {
+  repeated LatestVillageBillingRow rows = 1;
 }
 
 message DivisionCollectionReportRequest {

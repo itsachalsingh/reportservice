@@ -193,5 +193,47 @@ service ConnectionService {
       returns (ConnectionCategorySummaryResponse);
   rpc GetConnectionCountSummary (ConnectionCountSummaryRequest)
       returns (ConnectionCountSummaryResponse);
+  rpc GetVillageBillingConnections (VillageBillingConnectionsRequest) returns (VillageBillingConnectionsResponse);
   rpc CreateConnection (CreateConnectionRequest) returns (CreateConnectionResponse);
+}
+
+message VillageBillingConnectionsRequest {
+  string department_id = 1;
+  string division_id = 2;
+  string page_token = 3;
+  string scheme_id = 4;
+  string collection_center_id = 5;
+  string area_type = 6;
+  string consumer_status = 7;
+}
+message VillageBillingConnection {
+  string connection_id = 1;
+  string division_id = 2;
+  string division_name = 3;
+  string village_id = 4;
+  string village_name = 5;
+  string status = 6;
+  string area_type = 7;
+  string ward_id = 8;
+  string ward_name = 9;
+  string scheme_id = 10;
+  string scheme_name = 11;
+  string collection_center_id = 12;
+  string collection_center_name = 13;
+  string connection_no = 14;
+  string consumer_code = 15;
+  string old_consumer_code = 16;
+  string new_consumer_code = 17;
+  string full_name = 18;
+  string father_name = 19;
+  string phone_no = 20;
+  string connection_address = 21;
+  string connection_for = 22;
+  string billing_type = 23;
+  string meter_no = 24;
+  string demand_no = 25;
+}
+message VillageBillingConnectionsResponse {
+  repeated VillageBillingConnection rows = 1;
+  string next_page_token = 2;
 }

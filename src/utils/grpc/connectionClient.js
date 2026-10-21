@@ -74,6 +74,20 @@ export function getConnectionCountSummary(payload = {}) {
   });
 }
 
+export function getVillageBillingConnections(payload = {}) {
+  const client = getClient();
+  return new Promise((resolve, reject) => {
+    client.getVillageBillingConnections(payload, { deadline: Date.now() + 120000 }, (error, response) => {
+      if (error) {
+        const err = new Error(error?.message || "Failed to fetch village billing connections");
+        err.code = error.code;
+        return reject(err);
+      }
+      resolve(response || { rows: [], next_page_token: "" });
+    });
+  });
+}
+
 export function getConnectionByConsumerCode(consumerCode) {
   const client = getClient();
   return new Promise((resolve, reject) => {

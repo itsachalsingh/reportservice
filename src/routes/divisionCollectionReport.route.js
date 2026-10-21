@@ -206,7 +206,7 @@ export async function buildDivisionCollectionReport(body = {}) {
     message: "Division-wise collection report generated successfully",
     latest_bill_per_connection: true,
     latest_bill_scope: "requested_period",
-    collection_basis: `${effectivePaymentStatus}_transactions_for_selected_latest_bills`,
+    collection_basis: `${effectivePaymentStatus}_bill_transactions_for_division_in_selected_period`,
     collection_cutoff_date: collectionPeriod.cutoff_date,
     collection_includes_today: collectionPeriod.includes_today,
     collection_periods: collectionPeriod.periods,
